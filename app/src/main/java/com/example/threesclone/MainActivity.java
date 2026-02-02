@@ -12,6 +12,12 @@ import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.content.Context;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -21,6 +27,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvScore, tvGameOver, tvReward;
     private LinearLayout layoutHints;
     private GestureDetector gestureDetector;
+    private Vibrator vibrator;
+    
+    // Audio Consts
+    private static final float MAX_FREQ = 2000f;
+    private static final float BASE_FREQ = 300f;
     
     // Kích thước ô trên màn hình (px)
     private int cellSize; 
@@ -54,6 +65,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Gesture Detector cho Swipe
         gestureDetector = new GestureDetector(this, new SwipeListener());
+        
+        // Init Vibrator
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         btnReset.setOnClickListener(v -> startNewGame());
 
@@ -103,6 +117,12 @@ public class MainActivity extends AppCompatActivity {
                 float phiNew = game.calculatePotential();
                 float reward = game.calculateMoveReward(phiOld, phiNew);
                 showReward(reward);
+                
+                // Feedback
+                triggerHaptic(reward);
+                float freq = calculateFrequency(reward);
+                playSound(freq);
+                
                 updateUI();
             }
             return true;
@@ -210,5 +230,68 @@ public class MainActivity extends AppCompatActivity {
             tvReward.setTextColor(Color.parseColor("#F44336")); // Red
         }
         tvReward.setVisibility(View.VISIBLE);
+    }
+
+    // --- Audio & Haptic Logic ---
+    public float calculateFrequency(float reward) {
+        if (reward <= 0) return 150f; // Reward âm/bằng 0: Tiếng "bụp" trầm thấp
+        
+        float freq = BASE_FREQ + (150.0f * (float)Math.log(reward + 1));
+        return Math.min(freq, MAX_FREQ);
+    }
+    
+    private void playSound(float freq) {
+        new Thread(() -> {
+            try {
+                int durationMs = 200;
+                int sampleRate = 44100;
+                int numSamples = durationMs * sampleRate / 1000;
+                double[] sample = new double[numSamples];
+                byte[] generatedSnd = new byte[2 * numSamples];
+
+                for (int i = 0; i < numSamples; ++i) {
+                    sample[i] = Math.sin(2 * Math.PI * i / (sampleRate / freq));
+                }
+
+                int idx = 0;
+                for (final double dVal : sample) {
+                    final short val = (short) ((dVal * 32767));
+                    generatedSnd[idx++] = (byte) (val & 0x00ff);
+                    generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
+                }
+
+                AudioTrack audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
+                        sampleRate, AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT, generatedSnd.length,
+                        AudioTrack.MODE_STATIC);
+                audioTrack.write(generatedSnd, 0, generatedSnd.length);
+                audioTrack.play();
+                
+                // Release after play
+                try { Thread.sleep(durationMs + 100); } catch (InterruptedException e) {}
+                audioTrack.release();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    public void triggerHaptic(float reward) {
+        if (reward <= 0) return; 
+
+        // 1. Tính thời lượng (tối đa 400ms)
+        long duration = (long) (20 + 5 * Math.sqrt(reward));
+        if (duration > 400) duration = 400;
+
+        // 2. Tính cường độ (tối đa 255)
+        int amplitude = (int) (50 + 30 * Math.log(reward + 1));
+        if (amplitude > 255) amplitude = 255;
+
+        // Thực hiện rung
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
+        } else {
+            vibrator.vibrate(duration);
+        }
     }
 }

@@ -277,7 +277,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void triggerHaptic(float reward) {
-        if (reward <= 0) return; 
+        if (reward <= 0) return;
+        if (vibrator == null || !vibrator.hasVibrator()) return;
 
         // 1. Tính thời lượng (tối đa 400ms)
         long duration = (long) (20 + 5 * Math.sqrt(reward));

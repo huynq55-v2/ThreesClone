@@ -277,7 +277,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void triggerHaptic(float reward) {
-        if (!isVibrationEnabled) return; // Check setting bật/tắt
+       //  if (!isVibrationEnabled) return; // Check setting bật/tắt
 
         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         if (v == null || !v.hasVibrator()) return;

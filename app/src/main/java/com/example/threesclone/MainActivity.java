@@ -33,7 +33,6 @@ public class MainActivity extends AppCompatActivity {
     private static final float MAX_FREQ = 2000f;
     private static final float BASE_FREQ = 300f;
     
-    // Kích thước ô trên màn hình (px)
     private int cellSize; 
 
     @Override
@@ -49,39 +48,42 @@ public class MainActivity extends AppCompatActivity {
         layoutHints = findViewById(R.id.layoutHints);
         Button btnReset = findViewById(R.id.btnReset);
 
-        // Tính toán kích thước ô dựa trên màn hình và padding thực tế
+        // Calculate Cell Size
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         float density = getResources().getDisplayMetrics().density;
-        
-        // Tổng khoảng cách ngang:
-        // Root Padding: 16dp * 2
-        // Grid Padding: 8dp * 2
-        // Cell Margins: 8px * 2 * 4 (8px mỗi bên, 4 cột)
         int paddingRootPx = (int) (16 * 2 * density);
         int paddingGridPx = (int) (8 * 2 * density);
-        int marginPx = 8 * 2 * 4; // 8px margin cứng
-        
+        int marginPx = 8 * 2 * 4; 
         cellSize = (screenWidth - paddingRootPx - paddingGridPx - marginPx) / 4; 
 
-        // Gesture Detector cho Swipe
         gestureDetector = new GestureDetector(this, new SwipeListener());
-        
-        // Init Vibrator
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         btnReset.setOnClickListener(v -> startNewGame());
+
+        // --- TRAIN BUTTON TRICK ---
+        // Biến cái chữ "GAME OVER" thành nút Train
+        tvGameOver.setOnClickListener(v -> {
+            if (game.gameOver) {
+                game.trainOnHistory(); // Gọi hàm train
+                Toast.makeText(MainActivity.this, "AI đã học xong ván này!", Toast.LENGTH_SHORT).show();
+                tvGameOver.setText("BRAIN UPDATED!"); // Đổi chữ để báo hiệu
+                tvGameOver.setTextColor(Color.GREEN);
+            }
+        });
 
         startNewGame();
     }
 
     private void startNewGame() {
-        game = new Game();
+        game = new Game(this); // Truyền Context vào để load/save file
+        
         tvGameOver.setVisibility(View.GONE);
+        tvGameOver.setTextColor(Color.RED); // Reset màu chữ
         tvReward.setVisibility(View.GONE);
         updateUI();
     }
 
-    // Nhận cảm ứng chạm để xử lý swipe
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
@@ -99,6 +101,7 @@ public class MainActivity extends AppCompatActivity {
             if (game.gameOver) return false;
 
             boolean moved = false;
+            // 1. Hỏi AI xem bàn cờ cũ ngon cỡ nào
             float phiOld = game.calculatePotential();
 
             if (Math.abs(diffX) > Math.abs(diffY)) {
@@ -114,11 +117,13 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (moved) {
+                // 2. Hỏi AI xem bàn cờ mới ngon cỡ nào
                 float phiNew = game.calculatePotential();
-                float reward = game.calculateMoveReward(phiOld, phiNew);
-                showReward(reward);
                 
-                // Feedback
+                // 3. Tính reward chênh lệch để hiển thị
+                float reward = game.calculateMoveReward(phiOld, phiNew);
+                
+                showReward(reward);
                 triggerHaptic(reward);
                 float freq = calculateFrequency(reward);
                 playSound(freq);
@@ -139,14 +144,12 @@ public class MainActivity extends AppCompatActivity {
                 Tile tile = game.board[r][c];
                 TextView cell = new TextView(this);
                 
-                // Style cho ô
                 cell.setWidth(cellSize);
                 cell.setHeight(cellSize);
                 cell.setGravity(Gravity.CENTER);
                 cell.setTextSize(24);
                 cell.setTypeface(null, android.graphics.Typeface.BOLD);
                 
-                // Margin
                 GridLayout.LayoutParams params = new GridLayout.LayoutParams();
                 params.setMargins(8, 8, 8, 8);
                 cell.setLayoutParams(params);
@@ -156,9 +159,8 @@ public class MainActivity extends AppCompatActivity {
                     cell.setBackground(createTileBackground(tile.value));
                     cell.setTextColor(getTileTextColor(tile.value));
                 } else {
-                    cell.setBackgroundColor(Color.parseColor("#CDC1B4")); // Màu ô trống
+                    cell.setBackgroundColor(Color.parseColor("#CDC1B4"));
                 }
-                
                 gridLayout.addView(cell);
             }
         }
@@ -184,21 +186,21 @@ public class MainActivity extends AppCompatActivity {
 
         // 3. Check Game Over
         if (game.gameOver) {
+            tvGameOver.setText("GAME OVER\nTAP TO TRAIN"); // Nhắc người chơi bấm
             tvGameOver.setVisibility(View.VISIBLE);
         }
     }
 
-    // --- Coloring Helpers ---
+    // --- Helpers (Giữ nguyên) ---
     private GradientDrawable createTileBackground(int value) {
         GradientDrawable shape = new GradientDrawable();
         shape.setShape(GradientDrawable.RECTANGLE);
         shape.setCornerRadius(15);
-        
         int color;
         switch (value) {
-            case 1: color = Color.parseColor("#66CCFF"); break; // Xanh dương
-            case 2: color = Color.parseColor("#FF6666"); break; // Đỏ
-            case 3: color = Color.parseColor("#FFFFFF"); break; // Trắng
+            case 1: color = Color.parseColor("#66CCFF"); break;
+            case 2: color = Color.parseColor("#FF6666"); break;
+            case 3: color = Color.parseColor("#FFFFFF"); break;
             case 6: color = Color.parseColor("#F2B179"); break;
             case 12: color = Color.parseColor("#F59563"); break;
             case 24: color = Color.parseColor("#F67C5F"); break;
@@ -206,36 +208,33 @@ public class MainActivity extends AppCompatActivity {
             case 96: color = Color.parseColor("#EDCF72"); break;
             case 192: color = Color.parseColor("#EDCC61"); break;
             case 384: color = Color.parseColor("#EDC850"); break;
-            default: color = Color.parseColor("#EDC22E"); break; // Vàng đậm cho số to
+            default: color = Color.parseColor("#EDC22E"); break;
         }
         shape.setColor(color);
-        
-        // Border cho Tile 3 trắng để dễ nhìn
-        if (value == 3) {
-            shape.setStroke(2, Color.LTGRAY);
-        }
+        if (value == 3) shape.setStroke(2, Color.LTGRAY);
         return shape;
     }
     
     private int getTileTextColor(int value) {
         if (value == 3) return Color.BLACK;
-        if (value <= 2) return Color.WHITE;
         return Color.WHITE;
     }
+
     private void showReward(float reward) {
-        tvReward.setText(String.format("%+.2f", reward));
-        if (reward >= 0) {
-            tvReward.setTextColor(Color.parseColor("#4CAF50")); // Green
-        } else {
-            tvReward.setTextColor(Color.parseColor("#F44336")); // Red
+        // Chỉ hiện nếu reward đáng kể để đỡ rối mắt
+        if (Math.abs(reward) < 0.1) {
+            tvReward.setVisibility(View.GONE);
+            return;
         }
+        tvReward.setText(String.format("%+.1f", reward));
+        if (reward >= 0) tvReward.setTextColor(Color.parseColor("#4CAF50"));
+        else tvReward.setTextColor(Color.parseColor("#F44336"));
         tvReward.setVisibility(View.VISIBLE);
     }
 
-    // --- Audio & Haptic Logic ---
+    // --- Audio & Haptics ---
     public float calculateFrequency(float reward) {
-        if (reward <= 0) return 150f; // Reward âm/bằng 0: Tiếng "bụp" trầm thấp
-        
+        if (reward <= 0) return 150f;
         float freq = BASE_FREQ + (150.0f * (float)Math.log(reward + 1));
         return Math.min(freq, MAX_FREQ);
     }
@@ -243,102 +242,52 @@ public class MainActivity extends AppCompatActivity {
     private void playSound(float freq) {
         new Thread(() -> {
             try {
-                int durationMs = 200;
+                int durationMs = 150; // Ngắn gọn hơn
                 int sampleRate = 44100;
                 int numSamples = durationMs * sampleRate / 1000;
                 double[] sample = new double[numSamples];
                 byte[] generatedSnd = new byte[2 * numSamples];
-
                 for (int i = 0; i < numSamples; ++i) {
                     sample[i] = Math.sin(2 * Math.PI * i / (sampleRate / freq));
                 }
-
                 int idx = 0;
                 for (final double dVal : sample) {
                     final short val = (short) ((dVal * 32767));
                     generatedSnd[idx++] = (byte) (val & 0x00ff);
                     generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
                 }
-
                 AudioTrack audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
                         sampleRate, AudioFormat.CHANNEL_OUT_MONO,
                         AudioFormat.ENCODING_PCM_16BIT, generatedSnd.length,
                         AudioTrack.MODE_STATIC);
                 audioTrack.write(generatedSnd, 0, generatedSnd.length);
                 audioTrack.play();
-                
-                // Release after play
-                try { Thread.sleep(durationMs + 100); } catch (InterruptedException e) {}
+                try { Thread.sleep(durationMs + 50); } catch (InterruptedException e) {}
                 audioTrack.release();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            } catch (Exception e) {}
         }).start();
     }
 
     public void triggerHaptic(float reward) {
-       //  if (!isVibrationEnabled) return; // Check setting bật/tắt
-
-        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        if (v == null || !v.hasVibrator()) return;
-
-        // --- LOGIC TÍNH TOÁN ---
-        // 1. Phân loại Reward thành 3 cấp độ
-        // Level 1: Nhỏ (Gộp rác 1-5 điểm)
-        // Level 2: Vừa (Gộp 6-100 điểm)
-        // Level 3: To (Nổ hũ >100 điểm)
+        if (vibrator == null || !vibrator.hasVibrator()) return;
         int level = 1;
+        // Logic rung dựa trên reward của AI:
+        // Reward càng cao (AI thấy nước này càng ngon) -> Rung càng sướng
         if (reward > 100) level = 3;
         else if (reward > 10) level = 2;
+        else if (reward < -10) level = 4; // Rung cảnh báo (Error)
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            
-            // KIỂM TRA PHẦN CỨNG: Máy có hỗ trợ chỉnh độ mạnh không?
-            if (v.hasAmplitudeControl()) {
-                // === MÁY XỊN (Chỉnh được độ mạnh) ===
-                int time = 0;
-                int amp = 0;
-
-                switch (level) {
-                    case 1: time = 20; amp = 40; break;   // Rung cực nhanh, cực nhẹ
-                    case 2: time = 60; amp = 150; break;  // Rung vừa
-                    case 3: time = 200; amp = 255; break; // Rung dài, max lực
-                }
-                v.vibrate(VibrationEffect.createOneShot(time, amp));
-                
+            if (level == 4) { // Cảnh báo đi sai
+                long[] pattern = {0, 50, 50, 50}; 
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
             } else {
-                // === MÁY THƯỜNG (Của bác) ===
-                // Fake độ mạnh bằng thời gian siêu ngắn
-                // Rung 10ms cảm giác sẽ "nhẹ" hơn rung 100ms (dù motor quay max tốc)
-                
-                long duration = 0;
-                switch (level) {
-                    case 1: 
-                        // Level 1: "Tíc" (Rung 15ms)
-                        // Cảm giác như gõ phím nhẹ
-                        duration = 15; 
-                        v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
-                        break;
-                        
-                    case 2: 
-                        // Level 2: "Bụp" (Rung 60ms)
-                        duration = 60;
-                        v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
-                        break;
-                        
-                    case 3: 
-                        // Level 3: "Rèèèè" (Rung theo nhịp sóng)
-                        // Rung 50ms - Nghỉ 50ms - Rung 100ms (Tạo điểm nhấn)
-                        long[] pattern = {0, 50, 50, 100}; 
-                        // -1 nghĩa là không lặp lại
-                        v.vibrate(VibrationEffect.createWaveform(pattern, -1)); 
-                        break;
-                }
+                int amp = (level == 3) ? 255 : (level == 2 ? 150 : 50);
+                int time = (level == 3) ? 100 : 40;
+                vibrator.vibrate(VibrationEffect.createOneShot(time, amp));
             }
         } else {
-            // Android đời tống (< 8.0)
-            v.vibrate(level * 50); // Level 1=50ms, Level 3=150ms
+            vibrator.vibrate(level * 40);
         }
     }
 }
-

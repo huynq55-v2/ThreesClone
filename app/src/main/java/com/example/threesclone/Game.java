@@ -19,6 +19,13 @@ public class Game {
     private PseudoList special;
     private Random rng = new Random();
 
+    // PBRS Constants
+    private static final float W_POWER = 1.0f;
+    private static final float W_LIFE = 10.0f;
+    private static final float W_ORDER = 1.0f;
+    private static final float GAMMA = 0.99f;
+    private static final float BASE_SURVIVAL = 12.0f;
+
     // Consts
     private static final int K_NUMBER_RANDOMNESS = 4;
     private static final int K_SPECIAL_RARENESS = 20;
@@ -284,6 +291,59 @@ public class Game {
                     score += Math.pow(3, getRankFromValue(board[r][c].value));
                 }
             }
+    }
+
+    // --- PBRS Reward Logic ---
+    public float calculatePotential() {
+        float growthScore = 0.0f;
+        float emptyCount = 0.0f;
+        float disorder = 0.0f;
+
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                int val = board[r][c].value;
+                if (val == 0) {
+                    emptyCount += 1.0f;
+                    continue;
+                }
+
+                int rank = board[r][c].getRank();
+
+                if (rank >= 1) {
+                    growthScore += Math.pow(3, rank);
+                }
+
+                // Disorder
+                if (c < 3) {
+                    int rightVal = board[r][c + 1].value;
+                    if (rightVal != 0) {
+                        disorder += calculateDiff(val, rightVal);
+                    }
+                }
+                if (r < 3) {
+                    int downVal = board[r + 1][c].value;
+                    if (downVal != 0) {
+                        disorder += calculateDiff(val, downVal);
+                    }
+                }
+            }
+        }
+
+        return (W_POWER * growthScore) + (W_LIFE * emptyCount) - (W_ORDER * disorder);
+    }
+
+    private float calculateDiff(int a, int b) {
+        if ((a == 1 && b == 2) || (a == 2 && b == 1)) return 0.0f;
+        if ((a == 1 && b == 1) || (a == 2 && b == 2)) return 1.0f;
+
+        int ra = getRankFromValue(a);
+        int rb = getRankFromValue(b);
+
+        return Math.abs(ra - rb);
+    }
+
+    public float calculateMoveReward(float phiOld, float phiNew) {
+        return BASE_SURVIVAL + ((GAMMA * phiNew) - phiOld);
     }
     
     private void checkGameOver() {

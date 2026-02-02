@@ -18,7 +18,7 @@ public class MainActivity extends AppCompatActivity {
 
     private Game game;
     private GridLayout gridLayout;
-    private TextView tvScore, tvGameOver;
+    private TextView tvScore, tvGameOver, tvReward;
     private LinearLayout layoutHints;
     private GestureDetector gestureDetector;
     
@@ -34,12 +34,23 @@ public class MainActivity extends AppCompatActivity {
         gridLayout = findViewById(R.id.gridLayoutBoard);
         tvScore = findViewById(R.id.tvScore);
         tvGameOver = findViewById(R.id.tvGameOver);
+        tvReward = findViewById(R.id.tvReward);
         layoutHints = findViewById(R.id.layoutHints);
         Button btnReset = findViewById(R.id.btnReset);
 
-        // Tính kích thước ô vuông dựa trên màn hình
+        // Tính toán kích thước ô dựa trên màn hình và padding thực tế
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        cellSize = (screenWidth - 100) / 4; 
+        float density = getResources().getDisplayMetrics().density;
+        
+        // Tổng khoảng cách ngang:
+        // Root Padding: 16dp * 2
+        // Grid Padding: 8dp * 2
+        // Cell Margins: 8px * 2 * 4 (8px mỗi bên, 4 cột)
+        int paddingRootPx = (int) (16 * 2 * density);
+        int paddingGridPx = (int) (8 * 2 * density);
+        int marginPx = 8 * 2 * 4; // 8px margin cứng
+        
+        cellSize = (screenWidth - paddingRootPx - paddingGridPx - marginPx) / 4; 
 
         // Gesture Detector cho Swipe
         gestureDetector = new GestureDetector(this, new SwipeListener());
@@ -52,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private void startNewGame() {
         game = new Game();
         tvGameOver.setVisibility(View.GONE);
+        tvReward.setVisibility(View.GONE);
         updateUI();
     }
 
@@ -73,6 +85,8 @@ public class MainActivity extends AppCompatActivity {
             if (game.gameOver) return false;
 
             boolean moved = false;
+            float phiOld = game.calculatePotential();
+
             if (Math.abs(diffX) > Math.abs(diffY)) {
                 if (Math.abs(diffX) > THRESHOLD && Math.abs(velocityX) > VELOCITY_THRESHOLD) {
                     if (diffX > 0) moved = game.move(Direction.RIGHT);
@@ -85,7 +99,12 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            if (moved) updateUI();
+            if (moved) {
+                float phiNew = game.calculatePotential();
+                float reward = game.calculateMoveReward(phiOld, phiNew);
+                showReward(reward);
+                updateUI();
+            }
             return true;
         }
     }
@@ -182,5 +201,14 @@ public class MainActivity extends AppCompatActivity {
         if (value == 3) return Color.BLACK;
         if (value <= 2) return Color.WHITE;
         return Color.WHITE;
+    }
+    private void showReward(float reward) {
+        tvReward.setText(String.format("%+.2f", reward));
+        if (reward >= 0) {
+            tvReward.setTextColor(Color.parseColor("#4CAF50")); // Green
+        } else {
+            tvReward.setTextColor(Color.parseColor("#F44336")); // Red
+        }
+        tvReward.setVisibility(View.VISIBLE);
     }
 }

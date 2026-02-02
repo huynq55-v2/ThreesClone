@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -46,17 +47,35 @@
         android:gravity="center">
         </LinearLayout>
 
-    <GridLayout
-        android:id="@+id/gridLayoutBoard"
+    <FrameLayout
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:rowCount="4"
-        android:columnCount="4"
-        android:alignmentMode="alignMargins"
-        android:columnOrderPreserved="false"
-        android:background="#BBADA0"
-        android:padding="8dp">
+        android:layout_height="wrap_content">
+
+        <GridLayout
+            android:id="@+id/gridLayoutBoard"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:rowCount="4"
+            android:columnCount="4"
+            android:alignmentMode="alignMargins"
+            android:columnOrderPreserved="false"
+            android:background="#BBADA0"
+            android:padding="8dp">
         </GridLayout>
+
+        <TextView
+            android:id="@+id/tvReward"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+12.50"
+            android:textSize="40sp"
+            android:textStyle="bold"
+            android:textColor="#4CAF50"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            tools:visibility="visible"/>
+
+    </FrameLayout>
 
     <TextView
         android:id="@+id/tvGameOver"

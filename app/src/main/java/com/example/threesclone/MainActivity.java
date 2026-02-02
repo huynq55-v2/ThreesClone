@@ -277,22 +277,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void triggerHaptic(float reward) {
-        if (reward <= 0) return;
-        if (vibrator == null || !vibrator.hasVibrator()) return;
+        // 1. Check công tắc trong app (nếu bác đã làm nút bật tắt)
+        // if (!isVibrationEnabled) return; 
 
-        // 1. Tính thời lượng (tối đa 400ms)
-        long duration = (long) (20 + 5 * Math.sqrt(reward));
-        if (duration > 400) duration = 400;
-
-        // 2. Tính cường độ (tối đa 255)
-        int amplitude = (int) (50 + 30 * Math.log(reward + 1));
-        if (amplitude > 255) amplitude = 255;
-
-        // Thực hiện rung
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
-        } else {
-            vibrator.vibrate(duration);
+        Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        
+        // 2. Check phần cứng (nếu null hoặc không có motor thì chịu)
+        if (v == null || !v.hasVibrator()) {
+            android.util.Log.e("RUNG_LOI", "Máy này không có cục rung hoặc không gọi được service!");
+            return;
         }
+
+        // 3. RUNG CỤC SÚC (Legacy Method)
+        // Gọi thẳng thời gian rung. Không cần VibrationEffect cầu kỳ.
+        // 100ms là đủ để giật mình rồi.
+        // Lệnh này trên Samsung cũ thường xuyên xuyên thủng lớp bảo vệ.
+        v.vibrate(100); 
+        
+        // Debug log
+        android.util.Log.d("TEST_RUNG", "Đã gửi lệnh rung 100ms!");
     }
 }
+

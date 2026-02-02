@@ -277,25 +277,68 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void triggerHaptic(float reward) {
-        // 1. Check công tắc trong app (nếu bác đã làm nút bật tắt)
-        // if (!isVibrationEnabled) return; 
+        if (!isVibrationEnabled) return; // Check setting bật/tắt
 
         Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        
-        // 2. Check phần cứng (nếu null hoặc không có motor thì chịu)
-        if (v == null || !v.hasVibrator()) {
-            android.util.Log.e("RUNG_LOI", "Máy này không có cục rung hoặc không gọi được service!");
-            return;
-        }
+        if (v == null || !v.hasVibrator()) return;
 
-        // 3. RUNG CỤC SÚC (Legacy Method)
-        // Gọi thẳng thời gian rung. Không cần VibrationEffect cầu kỳ.
-        // 100ms là đủ để giật mình rồi.
-        // Lệnh này trên Samsung cũ thường xuyên xuyên thủng lớp bảo vệ.
-        v.vibrate(100); 
-        
-        // Debug log
-        android.util.Log.d("TEST_RUNG", "Đã gửi lệnh rung 100ms!");
+        // --- LOGIC TÍNH TOÁN ---
+        // 1. Phân loại Reward thành 3 cấp độ
+        // Level 1: Nhỏ (Gộp rác 1-5 điểm)
+        // Level 2: Vừa (Gộp 6-100 điểm)
+        // Level 3: To (Nổ hũ >100 điểm)
+        int level = 1;
+        if (reward > 100) level = 3;
+        else if (reward > 10) level = 2;
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            
+            // KIỂM TRA PHẦN CỨNG: Máy có hỗ trợ chỉnh độ mạnh không?
+            if (v.hasAmplitudeControl()) {
+                // === MÁY XỊN (Chỉnh được độ mạnh) ===
+                int time = 0;
+                int amp = 0;
+
+                switch (level) {
+                    case 1: time = 20; amp = 40; break;   // Rung cực nhanh, cực nhẹ
+                    case 2: time = 60; amp = 150; break;  // Rung vừa
+                    case 3: time = 200; amp = 255; break; // Rung dài, max lực
+                }
+                v.vibrate(VibrationEffect.createOneShot(time, amp));
+                
+            } else {
+                // === MÁY THƯỜNG (Của bác) ===
+                // Fake độ mạnh bằng thời gian siêu ngắn
+                // Rung 10ms cảm giác sẽ "nhẹ" hơn rung 100ms (dù motor quay max tốc)
+                
+                long duration = 0;
+                switch (level) {
+                    case 1: 
+                        // Level 1: "Tíc" (Rung 15ms)
+                        // Cảm giác như gõ phím nhẹ
+                        duration = 15; 
+                        v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+                        break;
+                        
+                    case 2: 
+                        // Level 2: "Bụp" (Rung 60ms)
+                        duration = 60;
+                        v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+                        break;
+                        
+                    case 3: 
+                        // Level 3: "Rèèèè" (Rung theo nhịp sóng)
+                        // Rung 50ms - Nghỉ 50ms - Rung 100ms (Tạo điểm nhấn)
+                        long[] pattern = {0, 50, 50, 100}; 
+                        // -1 nghĩa là không lặp lại
+                        v.vibrate(VibrationEffect.createWaveform(pattern, -1)); 
+                        break;
+                }
+            }
+        } else {
+            // Android đời tống (< 8.0)
+            v.vibrate(level * 50); // Level 1=50ms, Level 3=150ms
+        }
     }
 }
 

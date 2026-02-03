@@ -24,6 +24,7 @@ public class NTupleNetwork implements Serializable {
         addCols();
         addSquares2x2();
         addSnakes();
+        addRectangles2x3(); // 6-cell patterns for chain recognition
         
         // 2. Initialize Weight Tables
         initWeights();
@@ -58,6 +59,31 @@ public class NTupleNetwork implements Serializable {
         tuples.add(new int[]{3, 2, 6, 7});
         tuples.add(new int[]{12, 13, 9, 8});
         tuples.add(new int[]{15, 14, 10, 11});
+    }
+
+    private void addRectangles2x3() {
+        // Horizontal rectangles: 2 rows x 3 cols (6 positions each)
+        // Creates 6 patterns: rows 0-1, 1-2, 2-3 × cols 0-2, 1-3
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 2; c++) {
+                tuples.add(new int[]{
+                    r * 4 + c, r * 4 + (c + 1), r * 4 + (c + 2),
+                    (r + 1) * 4 + c, (r + 1) * 4 + (c + 1), (r + 1) * 4 + (c + 2)
+                });
+            }
+        }
+        
+        // Vertical rectangles: 3 rows x 2 cols (6 positions each)
+        // Creates 6 patterns: rows 0-2, 1-3 × cols 0-1, 1-2, 2-3
+        for (int r = 0; r < 2; r++) {
+            for (int c = 0; c < 3; c++) {
+                tuples.add(new int[]{
+                    r * 4 + c, r * 4 + (c + 1),
+                    (r + 1) * 4 + c, (r + 1) * 4 + (c + 1),
+                    (r + 2) * 4 + c, (r + 2) * 4 + (c + 1)
+                });
+            }
+        }
     }
 
     private void initWeights() {

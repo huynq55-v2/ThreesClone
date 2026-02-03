@@ -270,22 +270,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadTrainingDataFromUri(Uri uri) {
-        try {
-            InputStream inputStream = getContentResolver().openInputStream(uri);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
-            reader.close();
-            inputStream.close();
+        Toast.makeText(this, "⏳ Training started, please wait...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                InputStream inputStream = getContentResolver().openInputStream(uri);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+                reader.close();
+                inputStream.close();
 
-            int count = game.trainFromLogData(sb.toString());
-            Toast.makeText(this, "🎓 Trained on " + count + " samples!", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "❌ Error reading file: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+                final int count = game.trainFromLogData(sb.toString());
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "🎓 Trained on " + count + " samples!", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                final String errorMsg = e.getMessage();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "❌ Error reading file: " + errorMsg, Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
     }
 
     private void startNewGame() {

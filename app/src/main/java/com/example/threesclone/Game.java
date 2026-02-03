@@ -22,13 +22,14 @@ public class Game {
     private Random rng = new Random();
 
     // AI & Training
-    public NTupleNetwork brain; // Bộ não AI
-    private Context context;    // Để lưu file
+    public NTupleNetwork brain; // Value Net
+    public PolicyNTuple policyBrain; // Policy Net (4 heads for each direction)
+    private Context context;
     
     // Cấu trúc lưu lịch sử để train
     public static class MoveRecord {
-        Tile[][] boardState; // Snapshot bàn cờ
-        int reward;          // Điểm kiếm được ở bước này
+        Tile[][] boardState;
+        int reward;
         
         public MoveRecord(Tile[][] src, int r) {
             this.boardState = new Tile[4][4];
@@ -47,7 +48,8 @@ public class Game {
 
     public Game(Context context) {
         this.context = context;
-        loadBrain(); // Tự động load não cũ lên
+        loadBrain();
+        loadPolicyBrain(); // Load Policy Brain too
         initGame();
     }
 
@@ -416,13 +418,25 @@ public class Game {
     }
     
     /**
-     * Get the best move direction using Expectimax evaluation.
-     * @return Best direction, or null if no valid moves
+     * Get the best move direction using Policy N-Tuple Network.
+     * Falls back to Expectimax if policy brain is not trained.
      */
     public Direction getBestMove() {
+        if (policyBrain != null) {
+            // Use Policy Network - check for valid move
+            Direction policyChoice = policyBrain.getBestAction(board);
+            if (canMove(policyChoice)) {
+                return policyChoice;
+            }
+            // Policy chose invalid move, find any valid move
+            for (Direction dir : Direction.values()) {
+                if (canMove(dir)) return dir;
+            }
+        }
+        
+        // Fallback to Expectimax
         Direction bestDir = null;
         float bestValue = -Float.MAX_VALUE;
-        
         for (Direction dir : Direction.values()) {
             float value = evaluateMove(dir);
             if (value > bestValue) {
@@ -430,7 +444,6 @@ public class Game {
                 bestDir = dir;
             }
         }
-        
         return bestDir;
     }
 
@@ -458,18 +471,19 @@ public class Game {
     }
 
     // --- KNOWLEDGE DISTILLATION: Load PPO Data ---
+    // Format: "board|return|action" where action is 0:UP,1:DOWN,2:LEFT,3:RIGHT
     public int trainFromLogData(String logData) {
         String[] lines = logData.split("\n");
-        float learningRate = 0.001f; // Learning rate nhỏ vì data chuẩn
+        float valueLR = 0.001f;   // Learning rate for Value Net
+        float policyLR = 0.01f;   // Learning rate for Policy Net (higher)
         int count = 0;
 
         for (String line : lines) {
             if (line.trim().isEmpty()) continue;
             
             try {
-                // Format: "1,2,3,...,16 values|targetG"
                 String[] parts = line.split("\\|");
-                if (parts.length != 2) continue;
+                if (parts.length < 2) continue;
                 
                 String[] boardStr = parts[0].trim().split(",");
                 if (boardStr.length != 16) continue;
@@ -485,8 +499,15 @@ public class Game {
                     dummyBoard[r][c] = new Tile(val);
                 }
                 
-                // Train ngay!
-                brain.train(dummyBoard, targetG, learningRate);
+                // Train Value Net
+                brain.train(dummyBoard, targetG, valueLR);
+                
+                // Train Policy Net (if action column exists)
+                if (parts.length >= 3) {
+                    int action = Integer.parseInt(parts[2].trim());
+                    policyBrain.train(dummyBoard, action, policyLR);
+                }
+                
                 count++;
             } catch (Exception e) {
                 // Skip invalid lines
@@ -495,6 +516,7 @@ public class Game {
 
         if (count > 0) {
             saveBrain();
+            savePolicyBrain();
         }
         return count;
     }
@@ -523,6 +545,37 @@ public class Game {
     public void resetBrain() {
         brain = new NTupleNetwork();
         saveBrain();
+    }
+
+    // --- Policy Brain Management ---
+    public void savePolicyBrain() {
+        try {
+            FileOutputStream fos = context.openFileOutput("policy_brain.dat", Context.MODE_PRIVATE);
+            ObjectOutputStream oos = new ObjectOutputStream(fos);
+            oos.writeObject(policyBrain);
+            oos.close(); fos.close();
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    public void loadPolicyBrain() {
+        try {
+            FileInputStream fis = context.openFileInput("policy_brain.dat");
+            ObjectInputStream ois = new ObjectInputStream(fis);
+            policyBrain = (PolicyNTuple) ois.readObject();
+            ois.close();
+        } catch (Exception e) {
+            policyBrain = new PolicyNTuple();
+        }
+    }
+
+    public void resetPolicyBrain() {
+        policyBrain = new PolicyNTuple();
+        savePolicyBrain();
+    }
+
+    public void resetAllBrains() {
+        resetBrain();
+        resetPolicyBrain();
     }
 
     private void checkGameOver() {

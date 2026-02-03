@@ -258,9 +258,9 @@ public class MainActivity extends AppCompatActivity {
             .setPositiveButton("Confirm", (dialog, which) -> {
                 String text = input.getText().toString().trim();
                 if (text.equalsIgnoreCase("accept")) {
-                    game.resetBrain();
+                    game.resetAllBrains(); // Reset both Value and Policy brains
                     updateUI();
-                    Toast.makeText(this, "🗑️ Brain reset!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "🗑️ All brains reset!", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(this, "❌ Cancelled - did not type 'accept'", Toast.LENGTH_SHORT).show();
                 }

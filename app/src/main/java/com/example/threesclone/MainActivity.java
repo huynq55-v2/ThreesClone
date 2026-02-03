@@ -35,7 +35,7 @@ public class MainActivity extends AppCompatActivity {
 
     private Game game;
     private GridLayout gridLayout;
-    private TextView tvScore, tvGameOver, tvReward, tvPotential;
+    private TextView tvScore, tvGameOver, tvReward;
     private LinearLayout layoutHints;
     private GestureDetector gestureDetector;
     private Vibrator vibrator;
@@ -62,7 +62,6 @@ public class MainActivity extends AppCompatActivity {
         tvScore = findViewById(R.id.tvScore);
         tvGameOver = findViewById(R.id.tvGameOver);
         tvReward = findViewById(R.id.tvReward);
-        tvPotential = findViewById(R.id.tvPotential);
         layoutHints = findViewById(R.id.layoutHints);
         Button btnReset = findViewById(R.id.btnReset);
 
@@ -166,23 +165,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void showResetConfirmationDialog() {
         EditText input = new EditText(this);
-        input.setHint("Nhập 'accept' để xác nhận");
+        input.setHint("Type 'accept' to confirm");
         
         new AlertDialog.Builder(this)
             .setTitle("⚠️ Reset Brain?")
-            .setMessage("Hành động này sẽ XÓA TOÀN BỘ kiến thức AI đã học.\n\nNhập 'accept' để xác nhận:")
+            .setMessage("This will DELETE ALL learned knowledge from the AI.\n\nType 'accept' to confirm:")
             .setView(input)
-            .setPositiveButton("Xác nhận", (dialog, which) -> {
+            .setPositiveButton("Confirm", (dialog, which) -> {
                 String text = input.getText().toString().trim();
                 if (text.equalsIgnoreCase("accept")) {
                     game.resetBrain();
                     updateUI();
                     Toast.makeText(this, "🗑️ Brain reset!", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(this, "❌ Hủy bỏ - không nhập đúng 'accept'", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "❌ Cancelled - did not type 'accept'", Toast.LENGTH_SHORT).show();
                 }
             })
-            .setNegativeButton("Hủy", null)
+            .setNegativeButton("Cancel", null)
             .show();
     }
 
@@ -266,10 +265,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUI() {
         tvScore.setText("SCORE: " + game.score);
-        
-        // Update Potential display
-        float potential = game.getCurrentPotential();
-        tvPotential.setText(String.format("φ: %.1f", potential));
 
         // 1. Render Board
         gridLayout.removeAllViews();

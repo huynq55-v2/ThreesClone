@@ -23,11 +23,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import android.widget.EditText;
 import android.os.Handler;
@@ -215,11 +211,9 @@ public class MainActivity extends AppCompatActivity {
     private void saveBrainToUri(Uri uri) {
         try {
             OutputStream os = getContentResolver().openOutputStream(uri);
-            ObjectOutputStream oos = new ObjectOutputStream(os);
-            oos.writeObject(game.brain);
-            oos.close();
+            game.brain.exportToBinary(os);
             os.close();
-            Toast.makeText(this, "💾 Brain exported!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "💾 Brain exported (Rust format)!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
@@ -228,13 +222,11 @@ public class MainActivity extends AppCompatActivity {
     private void loadBrainFromUri(Uri uri) {
         try {
             InputStream is = getContentResolver().openInputStream(uri);
-            ObjectInputStream ois = new ObjectInputStream(is);
-            game.brain = (NTupleNetwork) ois.readObject();
-            ois.close();
+            game.brain.loadFromBinary(is);
             is.close();
             game.saveBrain(); // Save to internal storage as well
             updateUI();
-            Toast.makeText(this, "📂 Brain imported!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "📂 Brain imported (Rust format)!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }

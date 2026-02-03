@@ -104,35 +104,11 @@
         android:layout_marginTop="16dp">
 
         <Button
-            android:id="@+id/btnLoadAI"
+            android:id="@+id/btnLoadModel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🤖 AI"
-            android:textSize="11sp"/>
-
-        <Button
-            android:id="@+id/btnLoadUser"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="👤 USER"
-            android:textSize="11sp"
-            android:layout_marginStart="4dp"/>
-
-        <Button
-            android:id="@+id/btnSaveUser"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="💾 SAVE"
-            android:textSize="11sp"
-            android:layout_marginStart="4dp"/>
-
-        <Button
-            android:id="@+id/btnResetModel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🗑️"
-            android:textSize="11sp"
-            android:layout_marginStart="4dp"/>
+            android:text="📥 LOAD MODEL (READ-ONLY)"
+            android:textSize="12sp"/>
     </LinearLayout>
 
 </LinearLayout>

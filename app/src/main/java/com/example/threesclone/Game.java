@@ -21,25 +21,9 @@ public class Game {
     private PseudoList special;
     private Random rng = new Random();
 
-    // AI & Training - Dual Brain System
-    public NTupleNetwork aiBrain;   // Read-only, loaded from Rust (5M games)
-    public NTupleNetwork userBrain; // Trainable, learns from user gameplay
+    // AI Brain (Read-Only)
+    public NTupleNetwork brain;
     private Context context;
-    
-    // Cấu trúc lưu lịch sử để train
-    public static class MoveRecord {
-        Tile[][] boardState;
-        int reward;
-        
-        public MoveRecord(Tile[][] src, int r) {
-            this.boardState = new Tile[4][4];
-            for(int i=0; i<4; i++) 
-                for(int j=0; j<4; j++) 
-                    this.boardState[i][j] = new Tile(src[i][j].value);
-            this.reward = r;
-        }
-    }
-    public List<MoveRecord> history = new ArrayList<>();
 
     // Consts
     private static final int K_NUMBER_RANDOMNESS = 4;
@@ -48,8 +32,7 @@ public class Game {
 
     public Game(Context context) {
         this.context = context;
-        loadAiBrain();
-        loadUserBrain();
+        loadBrain(); // Load saved brain if exists
         initGame();
     }
 
@@ -57,7 +40,7 @@ public class Game {
         score = 0;
         numMove = 0;
         gameOver = false;
-        history.clear(); // Xóa lịch sử ván cũ
+        gameOver = false;
 
         // Init Decks
         numbers = new PseudoList(K_NUMBER_RANDOMNESS);
@@ -89,9 +72,6 @@ public class Game {
         // Setup initial future
         futureValue = getNextValue();
         hints = predictFuture();
-        
-        // Lưu trạng thái đầu tiên
-        history.add(new MoveRecord(board, 0));
     }
 
     // --- Core Logic Move ---
@@ -131,8 +111,7 @@ public class Game {
             int rewardThisStep = score - scoreBefore; // Điểm vừa kiếm được
             
             // Rotate back trước khi lưu để hình ảnh bàn cờ đúng chiều
-            rotateBoard(4 - rot); 
-            history.add(new MoveRecord(board, rewardThisStep));
+            rotateBoard(4 - rot);
             
             checkGameOver();
             return true;
@@ -287,9 +266,8 @@ public class Game {
 
     // Hàm tính Reward thay cho PBRS cũ -> Dùng N-Tuple Brain
     public float calculatePotential() {
-        NTupleNetwork active = getActiveBrain();
-        if (active == null) return 0;
-        return active.predict(board);
+        if (brain == null) return 0;
+        return brain.predict(board);
     }
 
     public float calculateMoveReward(float phiOld, float phiNew) {
@@ -298,10 +276,10 @@ public class Game {
     }
 
     // Lấy giá trị Potential hiện tại cho UI
+    // Lấy giá trị Potential hiện tại cho UI
     public float getCurrentPotential() {
-        NTupleNetwork active = getActiveBrain();
-        if (active == null) return 0f;
-        return active.predict(board);
+        if (brain == null) return 0f;
+        return brain.predict(board);
     }
 
     // --- EXPECTIMAX MOVE EVALUATION (Fair AI - No Peeking) ---
@@ -379,7 +357,7 @@ public class Game {
      * @return Expected potential after the move, or -Float.MAX_VALUE if move is invalid
      */
     public float evaluateMove(Direction dir) {
-        if (getActiveBrain() == null) return 0f;
+        if (brain == null) return 0f;
         if (!canMove(dir)) return -Float.MAX_VALUE;
         
         int rot = getRotationsNeeded(dir);
@@ -411,7 +389,7 @@ public class Game {
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
                 // Predict potential
-                totalPotential += getActiveBrain().predict(finalBoard);
+                totalPotential += brain.predict(finalBoard);
                 count++;
             }
         }
@@ -439,89 +417,27 @@ public class Game {
 
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN" - Chỉ train User Brain
-    public void trainOnHistory() {
-        if (history.isEmpty()) return;
-        if (userBrain == null) userBrain = new NTupleNetwork();
-
-        float G = 0; // Actual Return tích lũy
-        float gamma = 0.99f;
-        float learningRate = 0.0025f; // Tốc độ học
-
-        // DUYỆT NGƯỢC (Monte Carlo)
-        for (int i = history.size() - 1; i >= 0; i--) {
-            MoveRecord step = history.get(i);
-            
-            // Công thức: G = Reward tại bước này + (Gamma * G tương lai)
-            G = step.reward + (gamma * G);
-            
-            // Dạy User Brain: "Với thế cờ này, giá trị thực tế là G"
-            userBrain.train(step.boardState, G, learningRate);
-        }
-
-        saveUserBrain(); // Lưu ngay vào bộ nhớ máy
-        history.clear(); // Xóa lịch sử sau khi học
-    }
-
-
-    // --- Dual Brain Management ---
+    // --- Brain Management (Read-Only) ---
     
-    /** Get the active brain for prediction (AI brain preferred, fallback to user brain) */
-    public NTupleNetwork getActiveBrain() {
-        if (aiBrain != null && aiBrain.weights.size() > 0) {
-            return aiBrain;
-        }
-        return userBrain;
-    }
-    
-    // --- AI Brain (Read-only, from Rust) ---
-    public void loadAiBrain() {
+    public void loadBrain() {
         try {
-            FileInputStream fis = context.openFileInput("ai_brain.dat");
-            aiBrain = new NTupleNetwork();
-            aiBrain.loadFromBinary(fis);
+            // Priority: Load externally provided brain file (brain.dat)
+            FileInputStream fis = context.openFileInput("brain.dat");
+            brain = new NTupleNetwork();
+            brain.loadFromBinary(fis);
             fis.close();
         } catch (Exception e) {
-            aiBrain = null; // No AI brain loaded
+            brain = new NTupleNetwork(); // Create empty brain if no file found
         }
     }
     
-    public void saveAiBrain() {
-        if (aiBrain == null) return;
+    // No saveBrain exposed publicly - Brain is read-only
+    public void saveBrain() {
         try {
-            FileOutputStream fos = context.openFileOutput("ai_brain.dat", Context.MODE_PRIVATE);
-            aiBrain.exportToBinary(fos);
+            FileOutputStream fos = context.openFileOutput("brain.dat", Context.MODE_PRIVATE);
+            brain.exportToBinary(fos);
             fos.close();
         } catch (Exception e) { e.printStackTrace(); }
-    }
-    
-    // --- User Brain (Trainable) ---
-    public void loadUserBrain() {
-        try {
-            FileInputStream fis = context.openFileInput("user_brain.dat");
-            userBrain = new NTupleNetwork();
-            userBrain.loadFromBinary(fis);
-            fis.close();
-        } catch (Exception e) {
-            userBrain = new NTupleNetwork(); // Create new if not exists
-        }
-    }
-    
-    public void saveUserBrain() {
-        try {
-            FileOutputStream fos = context.openFileOutput("user_brain.dat", Context.MODE_PRIVATE);
-            userBrain.exportToBinary(fos);
-            fos.close();
-        } catch (Exception e) { e.printStackTrace(); }
-    }
-    
-    public void resetUserBrain() {
-        userBrain = new NTupleNetwork();
-        saveUserBrain();
-    }
-    
-    public void resetAllBrains() {
-        // Only reset User Brain. AI Brain is protected/read-only.
-        resetUserBrain();
     }
 
     private void checkGameOver() {

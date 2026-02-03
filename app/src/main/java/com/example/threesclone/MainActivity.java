@@ -42,12 +42,10 @@ public class MainActivity extends AppCompatActivity {
     private static final float BASE_FREQ = 300f;
     
     private int cellSize;
-    private boolean hasTrainedThisGame = false;
+
     
-    // Brain management - Dual Brain System
-    private ActivityResultLauncher<String> userBrainSaveLauncher;
-    private ActivityResultLauncher<String[]> aiBrainLoadLauncher;
-    private ActivityResultLauncher<String[]> userBrainLoadLauncher;
+    // Brain management
+    private ActivityResultLauncher<String[]> brainLoadLauncher;
     
     // AI Auto-Solve Mode
     private boolean aiModeEnabled = false;
@@ -174,121 +172,46 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupBrainButtons() {
-        Button btnLoadAI = findViewById(R.id.btnLoadAI);
-        Button btnLoadUser = findViewById(R.id.btnLoadUser);
-        Button btnSaveUser = findViewById(R.id.btnSaveUser);
-        Button btnResetModel = findViewById(R.id.btnResetModel);
+        Button btnLoadModel = findViewById(R.id.btnLoadModel);
 
-        // --- AI BRAIN LOAD LAUNCHER (Read-only, from Rust) ---
-        aiBrainLoadLauncher = registerForActivityResult(
+        // --- BRAIN LOAD LAUNCHER ---
+        brainLoadLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
             uri -> {
                 if (uri != null) {
-                    loadAiBrainFromUri(uri);
+                    loadExternalBrain(uri);
                 }
             }
         );
 
-        btnLoadAI.setOnClickListener(v -> {
-            aiBrainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
+        btnLoadModel.setOnClickListener(v -> {
+            brainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
         });
-
-        // --- USER BRAIN LOAD LAUNCHER ---
-        userBrainLoadLauncher = registerForActivityResult(
-            new ActivityResultContracts.OpenDocument(),
-            uri -> {
-                if (uri != null) {
-                    loadUserBrainFromUri(uri);
-                }
-            }
-        );
-
-        btnLoadUser.setOnClickListener(v -> {
-            userBrainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
-        });
-
-        // --- USER BRAIN SAVE LAUNCHER ---
-        userBrainSaveLauncher = registerForActivityResult(
-            new ActivityResultContracts.CreateDocument("application/octet-stream"),
-            uri -> {
-                if (uri != null) {
-                    saveUserBrainToUri(uri);
-                }
-            }
-        );
-
-        btnSaveUser.setOnClickListener(v -> {
-            userBrainSaveLauncher.launch("user_brain_" + System.currentTimeMillis() + ".dat");
-        });
-
-        btnResetModel.setOnClickListener(v -> showResetConfirmationDialog());
     }
 
-    private void loadAiBrainFromUri(Uri uri) {
+    private void loadExternalBrain(Uri uri) {
         try {
             InputStream is = getContentResolver().openInputStream(uri);
-            if (game.aiBrain == null) {
-                game.aiBrain = new NTupleNetwork();
+            if (game.brain == null) {
+                game.brain = new NTupleNetwork();
             }
-            game.aiBrain.loadFromBinary(is);
+            game.brain.loadFromBinary(is);
             is.close();
-            game.saveAiBrain();
+            
+            // Auto save to internal storage for next launch
+            game.saveBrain();
+            
             updateUI();
-            Toast.makeText(this, "🤖 AI Brain loaded!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "🧠 Brain loaded successfuly!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "❌ Error loading brain: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void loadUserBrainFromUri(Uri uri) {
-        try {
-            InputStream is = getContentResolver().openInputStream(uri);
-            game.userBrain.loadFromBinary(is);
-            is.close();
-            game.saveUserBrain();
-            updateUI();
-            Toast.makeText(this, "👤 User Brain loaded!", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
 
-    private void saveUserBrainToUri(Uri uri) {
-        try {
-            OutputStream os = getContentResolver().openOutputStream(uri);
-            game.userBrain.exportToBinary(os);
-            os.close();
-            Toast.makeText(this, "💾 User Brain saved!", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void showResetConfirmationDialog() {
-        EditText input = new EditText(this);
-        input.setHint("Type 'accept' to confirm");
-        
-        new AlertDialog.Builder(this)
-            .setTitle("⚠️ Reset User Brain?")
-            .setMessage("This will DELETE your personal User Brain training.\n(AI Brain will not be affected)\n\nType 'accept' to confirm:")
-            .setView(input)
-            .setPositiveButton("Confirm", (dialog, which) -> {
-                String text = input.getText().toString().trim();
-                if (text.equalsIgnoreCase("accept")) {
-                    game.resetAllBrains(); // Only resets User Brain now
-                    updateUI();
-                    Toast.makeText(this, "🗑️ User brain reset!", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(this, "❌ Cancelled - did not type 'accept'", Toast.LENGTH_SHORT).show();
-                }
-            })
-            .setNegativeButton("Cancel", null)
-            .show();
-    }
 
     private void startNewGame() {
         game = new Game(this);
-        hasTrainedThisGame = false;
         
         tvGameOver.setVisibility(View.GONE);
         tvGameOver.setTextColor(Color.RED);
@@ -397,16 +320,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 3. Check Game Over
         if (game.gameOver) {
-            if (!hasTrainedThisGame) {
-                hasTrainedThisGame = true;
-                // Only train User Brain when player is playing manually (AI OFF)
-                if (!aiModeEnabled) {
-                    game.trainOnHistory();
-                    tvGameOver.setText("GAME OVER\n👤 Your gameplay has trained the User Brain!");
-                } else {
-                    tvGameOver.setText("GAME OVER\n🤖 AI mode - no training (brain protected)");
-                }
-            }
+            tvGameOver.setText("GAME OVER");
             tvGameOver.setVisibility(View.VISIBLE);
         }
     }

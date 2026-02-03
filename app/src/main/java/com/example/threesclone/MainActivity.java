@@ -331,17 +331,24 @@ public class MainActivity extends AppCompatActivity {
         shape.setCornerRadius(15);
         int color;
         switch (value) {
-            case 1: color = Color.parseColor("#66CCFF"); break;
-            case 2: color = Color.parseColor("#FF6666"); break;
-            case 3: color = Color.parseColor("#FFFFFF"); break;
-            case 6: color = Color.parseColor("#F2B179"); break;
-            case 12: color = Color.parseColor("#F59563"); break;
-            case 24: color = Color.parseColor("#F67C5F"); break;
-            case 48: color = Color.parseColor("#F65E3B"); break;
-            case 96: color = Color.parseColor("#EDCF72"); break;
-            case 192: color = Color.parseColor("#EDCC61"); break;
-            case 384: color = Color.parseColor("#EDC850"); break;
-            default: color = Color.parseColor("#EDC22E"); break;
+            // Special tiles
+            case 1: color = Color.parseColor("#5AC8FA"); break;  // Blue
+            case 2: color = Color.parseColor("#FF6B6B"); break;  // Red-pink
+            
+            // Gradient: Yellow → Orange → Red → Purple (warm palette)
+            case 3: color = Color.parseColor("#F5F5DC"); break;     // Cream white
+            case 6: color = Color.parseColor("#FFE066"); break;     // Light yellow
+            case 12: color = Color.parseColor("#FFD43B"); break;    // Yellow-orange
+            case 24: color = Color.parseColor("#FFA94D"); break;    // Light orange
+            case 48: color = Color.parseColor("#FF922B"); break;    // Orange
+            case 96: color = Color.parseColor("#FF6B35"); break;    // Red-orange
+            case 192: color = Color.parseColor("#F94144"); break;   // Red
+            case 384: color = Color.parseColor("#E63946"); break;   // Dark red
+            case 768: color = Color.parseColor("#D62828"); break;   // Deep red
+            case 1536: color = Color.parseColor("#9D0208"); break;  // Crimson
+            case 3072: color = Color.parseColor("#6A040F"); break;  // Dark crimson
+            case 6144: color = Color.parseColor("#370617"); break;  // Near black
+            default: color = Color.parseColor("#03071E"); break;    // Boss black
         }
         shape.setColor(color);
         if (value == 3) shape.setStroke(2, Color.LTGRAY);
@@ -349,7 +356,8 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private int getTileTextColor(int value) {
-        if (value == 3) return Color.BLACK;
+        // Dark text for light tiles, white for dark tiles
+        if (value == 3 || value == 6 || value == 12) return Color.parseColor("#333333");
         return Color.WHITE;
     }
 

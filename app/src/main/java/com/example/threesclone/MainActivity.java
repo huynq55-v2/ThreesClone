@@ -33,7 +33,8 @@ public class MainActivity extends AppCompatActivity {
     private static final float MAX_FREQ = 2000f;
     private static final float BASE_FREQ = 300f;
     
-    private int cellSize; 
+    private int cellSize;
+    private boolean hasTrainedThisGame = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,10 +65,11 @@ public class MainActivity extends AppCompatActivity {
         // --- TRAIN BUTTON TRICK ---
         // Biến cái chữ "GAME OVER" thành nút Train
         tvGameOver.setOnClickListener(v -> {
-            if (game.gameOver) {
-                game.trainOnHistory(); // Gọi hàm train
+            if (game.gameOver && !hasTrainedThisGame) {
+                hasTrainedThisGame = true; // Đánh dấu đã train rồi
+                game.trainOnHistory();
                 Toast.makeText(MainActivity.this, "AI đã học xong ván này!", Toast.LENGTH_SHORT).show();
-                tvGameOver.setText("BRAIN UPDATED!"); // Đổi chữ để báo hiệu
+                tvGameOver.setText("BRAIN UPDATED!");
                 tvGameOver.setTextColor(Color.GREEN);
             }
         });
@@ -76,10 +78,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startNewGame() {
-        game = new Game(this); // Truyền Context vào để load/save file
+        game = new Game(this);
+        hasTrainedThisGame = false; // Reset flag cho game mới
         
         tvGameOver.setVisibility(View.GONE);
-        tvGameOver.setTextColor(Color.RED); // Reset màu chữ
+        tvGameOver.setText("GAME OVER\nTAP TO TRAIN"); // Reset text
+        tvGameOver.setTextColor(Color.RED);
         tvReward.setVisibility(View.GONE);
         updateUI();
     }
@@ -124,7 +128,6 @@ public class MainActivity extends AppCompatActivity {
                 float reward = game.calculateMoveReward(phiOld, phiNew);
                 
                 showReward(reward);
-                triggerHaptic(reward);
                 float freq = calculateFrequency(reward);
                 playSound(freq);
                 
@@ -266,28 +269,5 @@ public class MainActivity extends AppCompatActivity {
                 audioTrack.release();
             } catch (Exception e) {}
         }).start();
-    }
-
-    public void triggerHaptic(float reward) {
-        if (vibrator == null || !vibrator.hasVibrator()) return;
-        int level = 1;
-        // Logic rung dựa trên reward của AI:
-        // Reward càng cao (AI thấy nước này càng ngon) -> Rung càng sướng
-        if (reward > 100) level = 3;
-        else if (reward > 10) level = 2;
-        else if (reward < -10) level = 4; // Rung cảnh báo (Error)
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            if (level == 4) { // Cảnh báo đi sai
-                long[] pattern = {0, 50, 50, 50}; 
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
-            } else {
-                int amp = (level == 3) ? 255 : (level == 2 ? 150 : 50);
-                int time = (level == 3) ? 100 : 40;
-                vibrator.vibrate(VibrationEffect.createOneShot(time, amp));
-            }
-        } else {
-            vibrator.vibrate(level * 40);
-        }
     }
 }

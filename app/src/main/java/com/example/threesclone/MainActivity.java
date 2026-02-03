@@ -269,15 +269,15 @@ public class MainActivity extends AppCompatActivity {
         input.setHint("Type 'accept' to confirm");
         
         new AlertDialog.Builder(this)
-            .setTitle("⚠️ Reset Brain?")
-            .setMessage("This will DELETE ALL learned knowledge from the AI.\n\nType 'accept' to confirm:")
+            .setTitle("⚠️ Reset User Brain?")
+            .setMessage("This will DELETE your personal User Brain training.\n(AI Brain will not be affected)\n\nType 'accept' to confirm:")
             .setView(input)
             .setPositiveButton("Confirm", (dialog, which) -> {
                 String text = input.getText().toString().trim();
                 if (text.equalsIgnoreCase("accept")) {
-                    game.resetAllBrains(); // Reset both Value and Policy brains
+                    game.resetAllBrains(); // Only resets User Brain now
                     updateUI();
-                    Toast.makeText(this, "🗑️ All brains reset!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "🗑️ User brain reset!", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(this, "❌ Cancelled - did not type 'accept'", Toast.LENGTH_SHORT).show();
                 }

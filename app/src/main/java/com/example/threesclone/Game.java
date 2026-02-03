@@ -520,8 +520,7 @@ public class Game {
     }
     
     public void resetAllBrains() {
-        aiBrain = null;
-        context.deleteFile("ai_brain.dat");
+        // Only reset User Brain. AI Brain is protected/read-only.
         resetUserBrain();
     }
 

@@ -317,8 +317,50 @@ public class Game {
         history.clear(); // Xóa lịch sử sau khi học
     }
 
-    // Load/Save Logic
-    private void saveBrain() {
+    // --- KNOWLEDGE DISTILLATION: Load PPO Data ---
+    public int trainFromLogData(String logData) {
+        String[] lines = logData.split("\n");
+        float learningRate = 0.001f; // Learning rate nhỏ vì data chuẩn
+        int count = 0;
+
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+            
+            try {
+                // Format: "1,2,3,...,16 values|targetG"
+                String[] parts = line.split("\\|");
+                if (parts.length != 2) continue;
+                
+                String[] boardStr = parts[0].trim().split(",");
+                if (boardStr.length != 16) continue;
+                
+                float targetG = Float.parseFloat(parts[1].trim());
+                
+                // Tái tạo bàn cờ ảo
+                Tile[][] dummyBoard = new Tile[4][4];
+                for (int i = 0; i < 16; i++) {
+                    int r = i / 4;
+                    int c = i % 4;
+                    int val = Integer.parseInt(boardStr[i].trim());
+                    dummyBoard[r][c] = new Tile(val);
+                }
+                
+                // Train ngay!
+                brain.train(dummyBoard, targetG, learningRate);
+                count++;
+            } catch (Exception e) {
+                // Skip invalid lines
+            }
+        }
+
+        if (count > 0) {
+            saveBrain();
+        }
+        return count;
+    }
+
+    // --- Brain Management (Public) ---
+    public void saveBrain() {
         try {
             FileOutputStream fos = context.openFileOutput("brain.dat", Context.MODE_PRIVATE);
             ObjectOutputStream oos = new ObjectOutputStream(fos);
@@ -326,7 +368,8 @@ public class Game {
             oos.close(); fos.close();
         } catch (Exception e) { e.printStackTrace(); }
     }
-    private void loadBrain() {
+
+    public void loadBrain() {
         try {
             FileInputStream fis = context.openFileInput("brain.dat");
             ObjectInputStream ois = new ObjectInputStream(fis);
@@ -335,6 +378,11 @@ public class Game {
         } catch (Exception e) {
             brain = new NTupleNetwork(); // Chưa có thì tạo não mới
         }
+    }
+
+    public void resetBrain() {
+        brain = new NTupleNetwork();
+        saveBrain();
     }
 
     private void checkGameOver() {

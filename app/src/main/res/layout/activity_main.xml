@@ -88,4 +88,44 @@
         android:visibility="gone"
         android:layout_marginTop="20dp"/>
 
+    <!-- Brain Management Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btnLoadData"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📥 DATA"
+            android:textSize="12sp"/>
+
+        <Button
+            android:id="@+id/btnSaveModel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💾 SAVE"
+            android:textSize="12sp"
+            android:layout_marginStart="8dp"/>
+
+        <Button
+            android:id="@+id/btnLoadModel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📂 LOAD"
+            android:textSize="12sp"
+            android:layout_marginStart="8dp"/>
+
+        <Button
+            android:id="@+id/btnResetModel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🗑️ RESET"
+            android:textSize="12sp"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+
 </LinearLayout>

@@ -2,6 +2,7 @@ package com.example.threesclone;
 
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -18,7 +19,12 @@ import android.media.AudioTrack;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.content.Context;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -35,6 +41,9 @@ public class MainActivity extends AppCompatActivity {
     
     private int cellSize;
     private boolean hasTrainedThisGame = false;
+    
+    // File picker for training data
+    private ActivityResultLauncher<String[]> filePickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,10 +72,9 @@ public class MainActivity extends AppCompatActivity {
         btnReset.setOnClickListener(v -> startNewGame());
 
         // --- TRAIN BUTTON TRICK ---
-        // Biến cái chữ "GAME OVER" thành nút Train
         tvGameOver.setOnClickListener(v -> {
             if (game.gameOver && !hasTrainedThisGame) {
-                hasTrainedThisGame = true; // Đánh dấu đã train rồi
+                hasTrainedThisGame = true;
                 game.trainOnHistory();
                 Toast.makeText(MainActivity.this, "AI đã học xong ván này!", Toast.LENGTH_SHORT).show();
                 tvGameOver.setText("BRAIN UPDATED!");
@@ -74,7 +82,65 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // --- BRAIN MANAGEMENT BUTTONS ---
+        setupBrainButtons();
+
         startNewGame();
+    }
+
+    private void setupBrainButtons() {
+        Button btnLoadData = findViewById(R.id.btnLoadData);
+        Button btnSaveModel = findViewById(R.id.btnSaveModel);
+        Button btnLoadModel = findViewById(R.id.btnLoadModel);
+        Button btnResetModel = findViewById(R.id.btnResetModel);
+
+        // File picker launcher
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri != null) {
+                    loadTrainingDataFromUri(uri);
+                }
+            }
+        );
+
+        btnLoadData.setOnClickListener(v -> {
+            filePickerLauncher.launch(new String[]{"text/*", "*/*"});
+        });
+
+        btnSaveModel.setOnClickListener(v -> {
+            game.saveBrain();
+            Toast.makeText(this, "💾 Brain saved!", Toast.LENGTH_SHORT).show();
+        });
+
+        btnLoadModel.setOnClickListener(v -> {
+            game.loadBrain();
+            Toast.makeText(this, "📂 Brain loaded!", Toast.LENGTH_SHORT).show();
+        });
+
+        btnResetModel.setOnClickListener(v -> {
+            game.resetBrain();
+            Toast.makeText(this, "🗑️ Brain reset!", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void loadTrainingDataFromUri(Uri uri) {
+        try {
+            InputStream inputStream = getContentResolver().openInputStream(uri);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+            reader.close();
+            inputStream.close();
+
+            int count = game.trainFromLogData(sb.toString());
+            Toast.makeText(this, "🎓 Trained on " + count + " samples!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ Error reading file: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void startNewGame() {

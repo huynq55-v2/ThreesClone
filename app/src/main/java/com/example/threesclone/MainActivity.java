@@ -99,6 +99,15 @@ public class MainActivity extends AppCompatActivity {
         startNewGame();
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Stop AI execution and remove all pending messages/callbacks to prevent memory leaks
+        if (aiHandler != null) {
+            aiHandler.removeCallbacksAndMessages(null);
+        }
+    }
+
     private void toggleAIMode() {
         aiModeEnabled = !aiModeEnabled;
         if (aiModeEnabled) {

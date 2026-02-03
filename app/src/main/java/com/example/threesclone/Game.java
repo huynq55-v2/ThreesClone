@@ -423,14 +423,16 @@ public class Game {
      */
     public Direction getBestMove() {
         if (policyBrain != null) {
-            // Use Policy Network - check for valid move
-            Direction policyChoice = policyBrain.getBestAction(board);
-            if (canMove(policyChoice)) {
+            boolean[] legalMoves = new boolean[4];
+            legalMoves[0] = canMove(Direction.UP);
+            legalMoves[1] = canMove(Direction.DOWN);
+            legalMoves[2] = canMove(Direction.LEFT);
+            legalMoves[3] = canMove(Direction.RIGHT);
+            
+            // Use Policy Network - filtered by valid moves
+            Direction policyChoice = policyBrain.getBestAction(board, legalMoves);
+            if (policyChoice != null) {
                 return policyChoice;
-            }
-            // Policy chose invalid move, find any valid move
-            for (Direction dir : Direction.values()) {
-                if (canMove(dir)) return dir;
             }
         }
         

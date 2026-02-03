@@ -20,19 +20,30 @@ public class PolicyNTuple implements Serializable {
     }
 
     /**
-     * Get the best action based on network predictions.
+     * Get the best action based on network predictions, filtered by legal moves.
+     * @param legalMoves boolean array of size 4 [UP, DOWN, LEFT, RIGHT]
      * @return Direction enum for the best move
      */
-    public Direction getBestAction(Tile[][] board) {
+    public Direction getBestAction(Tile[][] board, boolean[] legalMoves) {
         float maxVal = -Float.MAX_VALUE;
-        int bestAction = 0;
+        int bestAction = -1;
 
         for (int i = 0; i < 4; i++) {
+            if (!legalMoves[i]) continue;
+            
             float val = actors[i].predict(board);
             if (val > maxVal) {
                 maxVal = val;
                 bestAction = i;
             }
+        }
+
+        if (bestAction == -1) {
+            // Fallback: pick first legal move
+            for (int i = 0; i < 4; i++) {
+                if (legalMoves[i]) return actionToDirection(i);
+            }
+            return null; // Game Over
         }
 
         return actionToDirection(bestAction);

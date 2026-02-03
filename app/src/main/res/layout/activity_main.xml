@@ -25,6 +25,13 @@
             android:textColor="#776E65"/>
 
         <Button
+            android:id="@+id/btnAI"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🤖 AI"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
             android:id="@+id/btnReset"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

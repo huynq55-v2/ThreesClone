@@ -30,6 +30,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import android.widget.EditText;
+import android.os.Handler;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -51,6 +52,13 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String[]> filePickerLauncher;
     private ActivityResultLauncher<String> brainSaveLauncher;
     private ActivityResultLauncher<String[]> brainLoadLauncher;
+    
+    // AI Auto-Solve Mode
+    private boolean aiModeEnabled = false;
+    private Handler aiHandler = new Handler();
+    private Button btnAI;
+    private static final int AI_MOVE_DELAY_MS = 300;
+    private static final int AUTO_RESET_DELAY_MS = 3000;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,6 +86,10 @@ public class MainActivity extends AppCompatActivity {
 
         btnReset.setOnClickListener(v -> startNewGame());
 
+        // --- AI MODE TOGGLE ---
+        btnAI = findViewById(R.id.btnAI);
+        btnAI.setOnClickListener(v -> toggleAIMode());
+
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
@@ -85,6 +97,54 @@ public class MainActivity extends AppCompatActivity {
         layoutHints.setOnClickListener(v -> showBestMoveHint());
 
         startNewGame();
+    }
+
+    private void toggleAIMode() {
+        aiModeEnabled = !aiModeEnabled;
+        if (aiModeEnabled) {
+            btnAI.setText("🤖 AI ON");
+            btnAI.setBackgroundColor(Color.parseColor("#4CAF50"));
+            scheduleNextAIMove();
+        } else {
+            btnAI.setText("🤖 AI");
+            btnAI.setBackgroundColor(Color.LTGRAY);
+            aiHandler.removeCallbacksAndMessages(null);
+        }
+    }
+
+    private void scheduleNextAIMove() {
+        if (!aiModeEnabled || game.gameOver) return;
+        aiHandler.postDelayed(this::performAIMove, AI_MOVE_DELAY_MS);
+    }
+
+    private void performAIMove() {
+        if (!aiModeEnabled || game.gameOver) return;
+        
+        Direction bestDir = game.getBestMove();
+        if (bestDir != null) {
+            float phiOld = game.calculatePotential();
+            boolean moved = game.move(bestDir);
+            if (moved) {
+                float phiNew = game.calculatePotential();
+                float reward = game.calculateMoveReward(phiOld, phiNew);
+                showReward(reward);
+                updateUI();
+            }
+        }
+        
+        if (game.gameOver) {
+            // Auto-reset after 3 seconds
+            aiHandler.postDelayed(this::autoResetForAI, AUTO_RESET_DELAY_MS);
+        } else {
+            scheduleNextAIMove();
+        }
+    }
+
+    private void autoResetForAI() {
+        if (aiModeEnabled) {
+            startNewGame();
+            scheduleNextAIMove();
+        }
     }
 
     private void showBestMoveHint() {

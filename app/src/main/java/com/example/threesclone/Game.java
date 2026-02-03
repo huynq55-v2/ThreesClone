@@ -294,6 +294,12 @@ public class Game {
         return (0.99f * phiNew) - phiOld;
     }
 
+    // Lấy giá trị Potential hiện tại cho UI
+    public float getCurrentPotential() {
+        if (brain == null) return 0f;
+        return brain.predict(board);
+    }
+
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
     public void trainOnHistory() {
         if (history.isEmpty()) return;

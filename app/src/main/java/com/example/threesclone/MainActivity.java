@@ -21,16 +21,21 @@ import android.os.Vibrator;
 import android.content.Context;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import android.widget.EditText;
 
 public class MainActivity extends AppCompatActivity {
 
     private Game game;
     private GridLayout gridLayout;
-    private TextView tvScore, tvGameOver, tvReward;
+    private TextView tvScore, tvGameOver, tvReward, tvPotential;
     private LinearLayout layoutHints;
     private GestureDetector gestureDetector;
     private Vibrator vibrator;
@@ -44,6 +49,8 @@ public class MainActivity extends AppCompatActivity {
     
     // File picker for training data
     private ActivityResultLauncher<String[]> filePickerLauncher;
+    private ActivityResultLauncher<String> brainSaveLauncher;
+    private ActivityResultLauncher<String[]> brainLoadLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +62,7 @@ public class MainActivity extends AppCompatActivity {
         tvScore = findViewById(R.id.tvScore);
         tvGameOver = findViewById(R.id.tvGameOver);
         tvReward = findViewById(R.id.tvReward);
+        tvPotential = findViewById(R.id.tvPotential);
         layoutHints = findViewById(R.id.layoutHints);
         Button btnReset = findViewById(R.id.btnReset);
 
@@ -108,20 +116,85 @@ public class MainActivity extends AppCompatActivity {
             filePickerLauncher.launch(new String[]{"text/*", "*/*"});
         });
 
+        // --- BRAIN SAVE LAUNCHER (Export to file) ---
+        brainSaveLauncher = registerForActivityResult(
+            new ActivityResultContracts.CreateDocument("application/octet-stream"),
+            uri -> {
+                if (uri != null) {
+                    saveBrainToUri(uri);
+                }
+            }
+        );
+
         btnSaveModel.setOnClickListener(v -> {
-            game.saveBrain();
-            Toast.makeText(this, "💾 Brain saved!", Toast.LENGTH_SHORT).show();
+            brainSaveLauncher.launch("brain_" + System.currentTimeMillis() + ".dat");
         });
+
+        // --- BRAIN LOAD LAUNCHER (Import from file) ---
+        brainLoadLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri != null) {
+                    loadBrainFromUri(uri);
+                }
+            }
+        );
 
         btnLoadModel.setOnClickListener(v -> {
-            game.loadBrain();
-            Toast.makeText(this, "📂 Brain loaded!", Toast.LENGTH_SHORT).show();
+            brainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
         });
 
-        btnResetModel.setOnClickListener(v -> {
-            game.resetBrain();
-            Toast.makeText(this, "🗑️ Brain reset!", Toast.LENGTH_SHORT).show();
-        });
+        btnResetModel.setOnClickListener(v -> showResetConfirmationDialog());
+    }
+
+    private void saveBrainToUri(Uri uri) {
+        try {
+            OutputStream os = getContentResolver().openOutputStream(uri);
+            ObjectOutputStream oos = new ObjectOutputStream(os);
+            oos.writeObject(game.brain);
+            oos.close();
+            os.close();
+            Toast.makeText(this, "💾 Brain exported!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void loadBrainFromUri(Uri uri) {
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            ObjectInputStream ois = new ObjectInputStream(is);
+            game.brain = (NTupleNetwork) ois.readObject();
+            ois.close();
+            is.close();
+            game.saveBrain(); // Save to internal storage as well
+            updateUI();
+            Toast.makeText(this, "📂 Brain imported!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void showResetConfirmationDialog() {
+        EditText input = new EditText(this);
+        input.setHint("Nhập 'accept' để xác nhận");
+        
+        new AlertDialog.Builder(this)
+            .setTitle("⚠️ Reset Brain?")
+            .setMessage("Hành động này sẽ XÓA TOÀN BỘ kiến thức AI đã học.\n\nNhập 'accept' để xác nhận:")
+            .setView(input)
+            .setPositiveButton("Xác nhận", (dialog, which) -> {
+                String text = input.getText().toString().trim();
+                if (text.equalsIgnoreCase("accept")) {
+                    game.resetBrain();
+                    updateUI();
+                    Toast.makeText(this, "🗑️ Brain reset!", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "❌ Hủy bỏ - không nhập đúng 'accept'", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("Hủy", null)
+            .show();
     }
 
     private void loadTrainingDataFromUri(Uri uri) {
@@ -205,6 +278,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUI() {
         tvScore.setText("SCORE: " + game.score);
+        
+        // Update Potential display
+        float potential = game.getCurrentPotential();
+        tvPotential.setText(String.format("φ: %.1f", potential));
 
         // 1. Render Board
         gridLayout.removeAllViews();

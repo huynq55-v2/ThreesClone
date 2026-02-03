@@ -300,6 +300,140 @@ public class Game {
         return brain.predict(board);
     }
 
+    // --- EXPECTIMAX MOVE EVALUATION (Fair AI - No Peeking) ---
+    
+    // Deep copy board
+    private Tile[][] cloneBoard(Tile[][] src) {
+        Tile[][] copy = new Tile[4][4];
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                copy[r][c] = new Tile(src[r][c].value);
+            }
+        }
+        return copy;
+    }
+    
+    // Rotate a board copy (not the main board)
+    private Tile[][] rotateBoardCopy(Tile[][] src, int times) {
+        Tile[][] result = cloneBoard(src);
+        times = times % 4;
+        for (int k = 0; k < times; k++) {
+            Tile[][] newBoard = new Tile[4][4];
+            for (int r = 0; r < 4; r++) {
+                for (int c = 0; c < 4; c++) {
+                    newBoard[c][3 - r] = result[r][c];
+                }
+            }
+            result = newBoard;
+        }
+        return result;
+    }
+    
+    // Process single row on a board copy, returns true if moved
+    private boolean processSingleRowOnBoard(Tile[][] board, int r) {
+        for (int c = 0; c < 3; c++) {
+            int target = board[r][c].value;
+            int source = board[r][c+1].value;
+            if (source == 0) continue;
+            
+            int newVal = -1;
+            if (target == 0) {
+                newVal = source;
+            } else if (target + source == 3) {
+                newVal = 3;
+            } else if (target >= 3 && target == source) {
+                newVal = target * 2;
+            }
+            
+            if (newVal != -1) {
+                board[r][c] = new Tile(newVal);
+                for (int k = c + 1; k < 3; k++) {
+                    board[r][k] = board[r][k+1];
+                }
+                board[r][3] = new Tile(0);
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Simulate shift on board copy, returns list of moved rows (aligned to LEFT)
+    private List<Integer> simulateShiftOnBoard(Tile[][] board) {
+        List<Integer> movedRows = new ArrayList<>();
+        for (int r = 0; r < 4; r++) {
+            if (processSingleRowOnBoard(board, r)) {
+                movedRows.add(r);
+            }
+        }
+        return movedRows;
+    }
+    
+    /**
+     * Evaluate a move using Expectimax (without cheating).
+     * Uses hints list and all possible spawn positions to calculate expected potential.
+     * @param dir Direction to evaluate
+     * @return Expected potential after the move, or -Float.MAX_VALUE if move is invalid
+     */
+    public float evaluateMove(Direction dir) {
+        if (brain == null) return 0f;
+        if (!canMove(dir)) return -Float.MAX_VALUE;
+        
+        int rot = getRotationsNeeded(dir);
+        
+        // 1. Clone and rotate board to align with LEFT
+        Tile[][] tempBoard = rotateBoardCopy(board, rot);
+        
+        // 2. Simulate shift (get moved rows)
+        List<Integer> movedRows = simulateShiftOnBoard(tempBoard);
+        if (movedRows.isEmpty()) return -Float.MAX_VALUE;
+        
+        // 3. Use hints list (fair play - no peeking at futureValue)
+        List<Integer> possibleValues = hints.isEmpty() ? 
+            java.util.Arrays.asList(1, 2, 3) : hints;
+        
+        float totalPotential = 0f;
+        int count = 0;
+        
+        // 4. Expectimax: Average over all spawn positions × all hint values
+        for (int row : movedRows) {
+            for (int hintVal : possibleValues) {
+                // Clone the shifted board
+                Tile[][] evalBoard = cloneBoard(tempBoard);
+                
+                // Place the tile at spawn position (column 3 for LEFT shift)
+                evalBoard[row][3] = new Tile(hintVal);
+                
+                // Rotate back to original orientation before prediction
+                Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
+                
+                // Predict potential
+                totalPotential += brain.predict(finalBoard);
+                count++;
+            }
+        }
+        
+        return count > 0 ? totalPotential / count : 0f;
+    }
+    
+    /**
+     * Get the best move direction using Expectimax evaluation.
+     * @return Best direction, or null if no valid moves
+     */
+    public Direction getBestMove() {
+        Direction bestDir = null;
+        float bestValue = -Float.MAX_VALUE;
+        
+        for (Direction dir : Direction.values()) {
+            float value = evaluateMove(dir);
+            if (value > bestValue) {
+                bestValue = value;
+                bestDir = dir;
+            }
+        }
+        
+        return bestDir;
+    }
+
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
     public void trainOnHistory() {
         if (history.isEmpty()) return;

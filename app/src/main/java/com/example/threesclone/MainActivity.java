@@ -81,7 +81,31 @@ public class MainActivity extends AppCompatActivity {
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
+        // --- HINT CLICK: Show Best Move ---
+        layoutHints.setOnClickListener(v -> showBestMoveHint());
+
         startNewGame();
+    }
+
+    private void showBestMoveHint() {
+        if (game.gameOver) return;
+        
+        Direction best = game.getBestMove();
+        if (best == null) {
+            Toast.makeText(this, "No valid moves!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        String arrow;
+        switch (best) {
+            case UP: arrow = "⬆️ UP"; break;
+            case DOWN: arrow = "⬇️ DOWN"; break;
+            case LEFT: arrow = "⬅️ LEFT"; break;
+            case RIGHT: arrow = "➡️ RIGHT"; break;
+            default: arrow = "?"; break;
+        }
+        
+        Toast.makeText(this, "Best: " + arrow, Toast.LENGTH_SHORT).show();
     }
 
     private void setupBrainButtons() {

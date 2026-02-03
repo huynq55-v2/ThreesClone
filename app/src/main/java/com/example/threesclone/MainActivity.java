@@ -79,17 +79,6 @@ public class MainActivity extends AppCompatActivity {
 
         btnReset.setOnClickListener(v -> startNewGame());
 
-        // --- TRAIN BUTTON TRICK ---
-        tvGameOver.setOnClickListener(v -> {
-            if (game.gameOver && !hasTrainedThisGame) {
-                hasTrainedThisGame = true;
-                game.trainOnHistory();
-                Toast.makeText(MainActivity.this, "AI đã học xong ván này!", Toast.LENGTH_SHORT).show();
-                tvGameOver.setText("BRAIN UPDATED!");
-                tvGameOver.setTextColor(Color.GREEN);
-            }
-        });
-
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
@@ -218,10 +207,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void startNewGame() {
         game = new Game(this);
-        hasTrainedThisGame = false; // Reset flag cho game mới
+        hasTrainedThisGame = false;
         
         tvGameOver.setVisibility(View.GONE);
-        tvGameOver.setText("GAME OVER\nTAP TO TRAIN"); // Reset text
         tvGameOver.setTextColor(Color.RED);
         tvReward.setVisibility(View.GONE);
         updateUI();
@@ -332,7 +320,11 @@ public class MainActivity extends AppCompatActivity {
 
         // 3. Check Game Over
         if (game.gameOver) {
-            tvGameOver.setText("GAME OVER\nTAP TO TRAIN"); // Nhắc người chơi bấm
+            if (!hasTrainedThisGame) {
+                hasTrainedThisGame = true;
+                game.trainOnHistory();
+            }
+            tvGameOver.setText("GAME OVER\nYour data has been integrated into the brain");
             tvGameOver.setVisibility(View.VISIBLE);
         }
     }

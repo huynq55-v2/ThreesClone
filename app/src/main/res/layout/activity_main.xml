@@ -104,19 +104,11 @@
         android:layout_marginTop="16dp">
 
         <Button
-            android:id="@+id/btnLoadData"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📥 DATA"
-            android:textSize="12sp"/>
-
-        <Button
             android:id="@+id/btnSaveModel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="💾 SAVE"
-            android:textSize="12sp"
-            android:layout_marginStart="8dp"/>
+            android:textSize="12sp"/>
 
         <Button
             android:id="@+id/btnLoadModel"

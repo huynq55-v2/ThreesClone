@@ -24,7 +24,8 @@ public class NTupleNetwork implements Serializable {
         addCols();
         addSquares2x2();
         addSnakes();
-        addRectangles2x3(); // 6-cell patterns for chain recognition
+        // NOTE: 2x3 Rectangles disabled - uses too much RAM (~540MB)
+        // addRectangles2x3();
         
         // 2. Initialize Weight Tables
         initWeights();

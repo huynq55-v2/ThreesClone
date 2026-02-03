@@ -48,8 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private int cellSize;
     private boolean hasTrainedThisGame = false;
     
-    // File picker for training data
-    private ActivityResultLauncher<String[]> filePickerLauncher;
+    // Brain management
     private ActivityResultLauncher<String> brainSaveLauncher;
     private ActivityResultLauncher<String[]> brainLoadLauncher;
     
@@ -178,24 +177,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupBrainButtons() {
-        Button btnLoadData = findViewById(R.id.btnLoadData);
         Button btnSaveModel = findViewById(R.id.btnSaveModel);
         Button btnLoadModel = findViewById(R.id.btnLoadModel);
         Button btnResetModel = findViewById(R.id.btnResetModel);
-
-        // File picker launcher
-        filePickerLauncher = registerForActivityResult(
-            new ActivityResultContracts.OpenDocument(),
-            uri -> {
-                if (uri != null) {
-                    loadTrainingDataFromUri(uri);
-                }
-            }
-        );
-
-        btnLoadData.setOnClickListener(v -> {
-            filePickerLauncher.launch(new String[]{"text/*", "*/*"});
-        });
 
         // --- BRAIN SAVE LAUNCHER (Export to file) ---
         brainSaveLauncher = registerForActivityResult(
@@ -276,33 +260,6 @@ public class MainActivity extends AppCompatActivity {
             })
             .setNegativeButton("Cancel", null)
             .show();
-    }
-
-    private void loadTrainingDataFromUri(Uri uri) {
-        Toast.makeText(this, "⏳ Training started, please wait...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                InputStream inputStream = getContentResolver().openInputStream(uri);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
-                }
-                reader.close();
-                inputStream.close();
-
-                final int count = game.trainFromLogData(sb.toString());
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "🎓 Trained on " + count + " samples!", Toast.LENGTH_SHORT).show();
-                });
-            } catch (Exception e) {
-                final String errorMsg = e.getMessage();
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "❌ Error reading file: " + errorMsg, Toast.LENGTH_SHORT).show();
-                });
-            }
-        }).start();
     }
 
     private void startNewGame() {

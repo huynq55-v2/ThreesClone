@@ -418,27 +418,13 @@ public class Game {
     }
     
     /**
-     * Get the best move direction using Policy N-Tuple Network.
-     * Falls back to Expectimax if policy brain is not trained.
+     * Get the best move direction using Expectimax (depth=1).
+     * Uses Value N-Tuple to evaluate board state after each move.
      */
     public Direction getBestMove() {
-        if (policyBrain != null) {
-            boolean[] legalMoves = new boolean[4];
-            legalMoves[0] = canMove(Direction.UP);
-            legalMoves[1] = canMove(Direction.DOWN);
-            legalMoves[2] = canMove(Direction.LEFT);
-            legalMoves[3] = canMove(Direction.RIGHT);
-            
-            // Use Policy Network - filtered by valid moves
-            Direction policyChoice = policyBrain.getBestAction(board, legalMoves);
-            if (policyChoice != null) {
-                return policyChoice;
-            }
-        }
-        
-        // Fallback to Expectimax
         Direction bestDir = null;
         float bestValue = -Float.MAX_VALUE;
+        
         for (Direction dir : Direction.values()) {
             float value = evaluateMove(dir);
             if (value > bestValue) {

@@ -44,9 +44,10 @@ public class MainActivity extends AppCompatActivity {
     private int cellSize;
     private boolean hasTrainedThisGame = false;
     
-    // Brain management
-    private ActivityResultLauncher<String> brainSaveLauncher;
-    private ActivityResultLauncher<String[]> brainLoadLauncher;
+    // Brain management - Dual Brain System
+    private ActivityResultLauncher<String> userBrainSaveLauncher;
+    private ActivityResultLauncher<String[]> aiBrainLoadLauncher;
+    private ActivityResultLauncher<String[]> userBrainLoadLauncher;
     
     // AI Auto-Solve Mode
     private boolean aiModeEnabled = false;
@@ -173,60 +174,91 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupBrainButtons() {
-        Button btnSaveModel = findViewById(R.id.btnSaveModel);
-        Button btnLoadModel = findViewById(R.id.btnLoadModel);
+        Button btnLoadAI = findViewById(R.id.btnLoadAI);
+        Button btnLoadUser = findViewById(R.id.btnLoadUser);
+        Button btnSaveUser = findViewById(R.id.btnSaveUser);
         Button btnResetModel = findViewById(R.id.btnResetModel);
 
-        // --- BRAIN SAVE LAUNCHER (Export to file) ---
-        brainSaveLauncher = registerForActivityResult(
-            new ActivityResultContracts.CreateDocument("application/octet-stream"),
-            uri -> {
-                if (uri != null) {
-                    saveBrainToUri(uri);
-                }
-            }
-        );
-
-        btnSaveModel.setOnClickListener(v -> {
-            brainSaveLauncher.launch("brain_" + System.currentTimeMillis() + ".dat");
-        });
-
-        // --- BRAIN LOAD LAUNCHER (Import from file) ---
-        brainLoadLauncher = registerForActivityResult(
+        // --- AI BRAIN LOAD LAUNCHER (Read-only, from Rust) ---
+        aiBrainLoadLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
             uri -> {
                 if (uri != null) {
-                    loadBrainFromUri(uri);
+                    loadAiBrainFromUri(uri);
                 }
             }
         );
 
-        btnLoadModel.setOnClickListener(v -> {
-            brainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
+        btnLoadAI.setOnClickListener(v -> {
+            aiBrainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
+        });
+
+        // --- USER BRAIN LOAD LAUNCHER ---
+        userBrainLoadLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri != null) {
+                    loadUserBrainFromUri(uri);
+                }
+            }
+        );
+
+        btnLoadUser.setOnClickListener(v -> {
+            userBrainLoadLauncher.launch(new String[]{"application/octet-stream", "*/*"});
+        });
+
+        // --- USER BRAIN SAVE LAUNCHER ---
+        userBrainSaveLauncher = registerForActivityResult(
+            new ActivityResultContracts.CreateDocument("application/octet-stream"),
+            uri -> {
+                if (uri != null) {
+                    saveUserBrainToUri(uri);
+                }
+            }
+        );
+
+        btnSaveUser.setOnClickListener(v -> {
+            userBrainSaveLauncher.launch("user_brain_" + System.currentTimeMillis() + ".dat");
         });
 
         btnResetModel.setOnClickListener(v -> showResetConfirmationDialog());
     }
 
-    private void saveBrainToUri(Uri uri) {
+    private void loadAiBrainFromUri(Uri uri) {
         try {
-            OutputStream os = getContentResolver().openOutputStream(uri);
-            game.brain.exportToBinary(os);
-            os.close();
-            Toast.makeText(this, "💾 Brain exported (Rust format)!", Toast.LENGTH_SHORT).show();
+            InputStream is = getContentResolver().openInputStream(uri);
+            if (game.aiBrain == null) {
+                game.aiBrain = new NTupleNetwork();
+            }
+            game.aiBrain.loadFromBinary(is);
+            is.close();
+            game.saveAiBrain();
+            updateUI();
+            Toast.makeText(this, "🤖 AI Brain loaded!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void loadBrainFromUri(Uri uri) {
+    private void loadUserBrainFromUri(Uri uri) {
         try {
             InputStream is = getContentResolver().openInputStream(uri);
-            game.brain.loadFromBinary(is);
+            game.userBrain.loadFromBinary(is);
             is.close();
-            game.saveBrain(); // Save to internal storage as well
+            game.saveUserBrain();
             updateUI();
-            Toast.makeText(this, "📂 Brain imported (Rust format)!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "👤 User Brain loaded!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void saveUserBrainToUri(Uri uri) {
+        try {
+            OutputStream os = getContentResolver().openOutputStream(uri);
+            game.userBrain.exportToBinary(os);
+            os.close();
+            Toast.makeText(this, "💾 User Brain saved!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "❌ Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
@@ -367,9 +399,14 @@ public class MainActivity extends AppCompatActivity {
         if (game.gameOver) {
             if (!hasTrainedThisGame) {
                 hasTrainedThisGame = true;
-                game.trainOnHistory();
+                // Only train User Brain when player is playing manually (AI OFF)
+                if (!aiModeEnabled) {
+                    game.trainOnHistory();
+                    tvGameOver.setText("GAME OVER\n👤 Your gameplay has trained the User Brain!");
+                } else {
+                    tvGameOver.setText("GAME OVER\n🤖 AI mode - no training (brain protected)");
+                }
             }
-            tvGameOver.setText("GAME OVER\nYour data has been integrated into the brain");
             tvGameOver.setVisibility(View.VISIBLE);
         }
     }

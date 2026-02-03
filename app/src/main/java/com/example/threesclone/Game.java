@@ -21,9 +21,9 @@ public class Game {
     private PseudoList special;
     private Random rng = new Random();
 
-    // AI & Training
-    public NTupleNetwork brain; // Value Net
-    public PolicyNTuple policyBrain; // Policy Net (4 heads for each direction)
+    // AI & Training - Dual Brain System
+    public NTupleNetwork aiBrain;   // Read-only, loaded from Rust (5M games)
+    public NTupleNetwork userBrain; // Trainable, learns from user gameplay
     private Context context;
     
     // Cấu trúc lưu lịch sử để train
@@ -48,8 +48,8 @@ public class Game {
 
     public Game(Context context) {
         this.context = context;
-        loadBrain();
-        loadPolicyBrain(); // Load Policy Brain too
+        loadAiBrain();
+        loadUserBrain();
         initGame();
     }
 
@@ -287,8 +287,9 @@ public class Game {
 
     // Hàm tính Reward thay cho PBRS cũ -> Dùng N-Tuple Brain
     public float calculatePotential() {
-        if (brain == null) return 0;
-        return brain.predict(board);
+        NTupleNetwork active = getActiveBrain();
+        if (active == null) return 0;
+        return active.predict(board);
     }
 
     public float calculateMoveReward(float phiOld, float phiNew) {
@@ -298,8 +299,9 @@ public class Game {
 
     // Lấy giá trị Potential hiện tại cho UI
     public float getCurrentPotential() {
-        if (brain == null) return 0f;
-        return brain.predict(board);
+        NTupleNetwork active = getActiveBrain();
+        if (active == null) return 0f;
+        return active.predict(board);
     }
 
     // --- EXPECTIMAX MOVE EVALUATION (Fair AI - No Peeking) ---
@@ -377,7 +379,7 @@ public class Game {
      * @return Expected potential after the move, or -Float.MAX_VALUE if move is invalid
      */
     public float evaluateMove(Direction dir) {
-        if (brain == null) return 0f;
+        if (getActiveBrain() == null) return 0f;
         if (!canMove(dir)) return -Float.MAX_VALUE;
         
         int rot = getRotationsNeeded(dir);
@@ -409,7 +411,7 @@ public class Game {
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
                 // Predict potential
-                totalPotential += brain.predict(finalBoard);
+                totalPotential += getActiveBrain().predict(finalBoard);
                 count++;
             }
         }
@@ -436,8 +438,10 @@ public class Game {
     }
 
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
+    // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN" - Chỉ train User Brain
     public void trainOnHistory() {
         if (history.isEmpty()) return;
+        if (userBrain == null) userBrain = new NTupleNetwork();
 
         float G = 0; // Actual Return tích lũy
         float gamma = 0.99f;
@@ -450,120 +454,75 @@ public class Game {
             // Công thức: G = Reward tại bước này + (Gamma * G tương lai)
             G = step.reward + (gamma * G);
             
-            // Dạy AI: "Với thế cờ này (step.boardState), giá trị thực tế là G"
-            brain.train(step.boardState, G, learningRate);
+            // Dạy User Brain: "Với thế cờ này, giá trị thực tế là G"
+            userBrain.train(step.boardState, G, learningRate);
         }
 
-        saveBrain(); // Lưu ngay vào bộ nhớ máy
+        saveUserBrain(); // Lưu ngay vào bộ nhớ máy
         history.clear(); // Xóa lịch sử sau khi học
     }
 
-    // --- KNOWLEDGE DISTILLATION: Load PPO Data ---
-    // Format: "board|return|action" where action is 0:UP,1:DOWN,2:LEFT,3:RIGHT
-    public int trainFromLogData(String logData) {
-        String[] lines = logData.split("\n");
-        float valueLR = 0.001f;   // Learning rate for Value Net
-        float policyLR = 0.01f;   // Learning rate for Policy Net (higher)
-        int count = 0;
 
-        for (String line : lines) {
-            if (line.trim().isEmpty()) continue;
-            
-            try {
-                String[] parts = line.split("\\|");
-                if (parts.length < 2) continue;
-                
-                String[] boardStr = parts[0].trim().split(",");
-                if (boardStr.length != 16) continue;
-                
-                float targetG = Float.parseFloat(parts[1].trim());
-                
-                // Tái tạo bàn cờ ảo
-                Tile[][] dummyBoard = new Tile[4][4];
-                for (int i = 0; i < 16; i++) {
-                    int r = i / 4;
-                    int c = i % 4;
-                    int val = Integer.parseInt(boardStr[i].trim());
-                    dummyBoard[r][c] = new Tile(val);
-                }
-                
-                // Train Value Net
-                brain.train(dummyBoard, targetG, valueLR);
-                
-                // Train Policy Net (if action column exists)
-                if (parts.length >= 3) {
-                    int action = Integer.parseInt(parts[2].trim());
-                    policyBrain.train(dummyBoard, action, policyLR);
-                }
-                
-                count++;
-            } catch (Exception e) {
-                // Skip invalid lines
-            }
+    // --- Dual Brain Management ---
+    
+    /** Get the active brain for prediction (AI brain preferred, fallback to user brain) */
+    public NTupleNetwork getActiveBrain() {
+        if (aiBrain != null && aiBrain.weights.size() > 0) {
+            return aiBrain;
         }
-
-        if (count > 0) {
-            saveBrain();
-            savePolicyBrain();
-        }
-        return count;
+        return userBrain;
     }
-
-    // --- Brain Management (Public) ---
-    public void saveBrain() {
+    
+    // --- AI Brain (Read-only, from Rust) ---
+    public void loadAiBrain() {
         try {
-            FileOutputStream fos = context.openFileOutput("brain.dat", Context.MODE_PRIVATE);
-            ObjectOutputStream oos = new ObjectOutputStream(fos);
-            oos.writeObject(brain);
-            oos.close(); fos.close();
+            FileInputStream fis = context.openFileInput("ai_brain.dat");
+            aiBrain = new NTupleNetwork();
+            aiBrain.loadFromBinary(fis);
+            fis.close();
+        } catch (Exception e) {
+            aiBrain = null; // No AI brain loaded
+        }
+    }
+    
+    public void saveAiBrain() {
+        if (aiBrain == null) return;
+        try {
+            FileOutputStream fos = context.openFileOutput("ai_brain.dat", Context.MODE_PRIVATE);
+            aiBrain.exportToBinary(fos);
+            fos.close();
         } catch (Exception e) { e.printStackTrace(); }
     }
-
-    public void loadBrain() {
+    
+    // --- User Brain (Trainable) ---
+    public void loadUserBrain() {
         try {
-            FileInputStream fis = context.openFileInput("brain.dat");
-            ObjectInputStream ois = new ObjectInputStream(fis);
-            brain = (NTupleNetwork) ois.readObject();
-            ois.close();
+            FileInputStream fis = context.openFileInput("user_brain.dat");
+            userBrain = new NTupleNetwork();
+            userBrain.loadFromBinary(fis);
+            fis.close();
         } catch (Exception e) {
-            brain = new NTupleNetwork(); // Chưa có thì tạo não mới
+            userBrain = new NTupleNetwork(); // Create new if not exists
         }
     }
-
-    public void resetBrain() {
-        brain = new NTupleNetwork();
-        saveBrain();
-    }
-
-    // --- Policy Brain Management ---
-    public void savePolicyBrain() {
+    
+    public void saveUserBrain() {
         try {
-            FileOutputStream fos = context.openFileOutput("policy_brain.dat", Context.MODE_PRIVATE);
-            ObjectOutputStream oos = new ObjectOutputStream(fos);
-            oos.writeObject(policyBrain);
-            oos.close(); fos.close();
+            FileOutputStream fos = context.openFileOutput("user_brain.dat", Context.MODE_PRIVATE);
+            userBrain.exportToBinary(fos);
+            fos.close();
         } catch (Exception e) { e.printStackTrace(); }
     }
-
-    public void loadPolicyBrain() {
-        try {
-            FileInputStream fis = context.openFileInput("policy_brain.dat");
-            ObjectInputStream ois = new ObjectInputStream(fis);
-            policyBrain = (PolicyNTuple) ois.readObject();
-            ois.close();
-        } catch (Exception e) {
-            policyBrain = new PolicyNTuple();
-        }
+    
+    public void resetUserBrain() {
+        userBrain = new NTupleNetwork();
+        saveUserBrain();
     }
-
-    public void resetPolicyBrain() {
-        policyBrain = new PolicyNTuple();
-        savePolicyBrain();
-    }
-
+    
     public void resetAllBrains() {
-        resetBrain();
-        resetPolicyBrain();
+        aiBrain = null;
+        context.deleteFile("ai_brain.dat");
+        resetUserBrain();
     }
 
     private void checkGameOver() {

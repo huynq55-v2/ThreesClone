@@ -11,12 +11,29 @@ import java.util.List;
 /**
  * N-Tuple Network for value approximation.
  * Compatible with Rust binary format (Little Endian).
+ * Optimized for Android performance.
  */
 public class NTupleNetwork implements Serializable {
-    private static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 3L;
 
     // Max value code 0-14 (covers up to tile 6144)
     private static final int MAX_VAL_CODE = 15;
+    
+    // Pre-computed encoding map for fast lookup (avoid Math.log)
+    private static final int[] ENCODE_MAP = new int[6145];
+    static {
+        ENCODE_MAP[0] = 0;
+        ENCODE_MAP[1] = 1;
+        ENCODE_MAP[2] = 2;
+        for (int v = 3; v <= 6144; v++) {
+            if (v % 3 == 0) {
+                ENCODE_MAP[v] = Math.min((int)(Math.log(v / 3.0) / Math.log(2)) + 3, 14);
+            }
+        }
+    }
+    
+    // Reusable buffer to avoid GC pressure
+    private transient int[] codesBuffer = new int[16];
     
     // Patterns and weights
     public List<int[]> tuples = new ArrayList<>();
@@ -31,6 +48,15 @@ public class NTupleNetwork implements Serializable {
         
         // 2. Initialize Weight Tables
         initWeights();
+        
+        // 3. Ensure buffer is initialized
+        ensureBuffer();
+    }
+    
+    private void ensureBuffer() {
+        if (codesBuffer == null) {
+            codesBuffer = new int[16];
+        }
     }
 
     private void addRows() {
@@ -57,7 +83,6 @@ public class NTupleNetwork implements Serializable {
     }
 
     private void addSnakes() {
-        // Snake zigzag patterns in 4 corners - Must match Rust!
         tuples.add(new int[]{0, 1, 5, 4}); 
         tuples.add(new int[]{3, 2, 6, 7});
         tuples.add(new int[]{12, 13, 9, 8});
@@ -72,73 +97,63 @@ public class NTupleNetwork implements Serializable {
         }
     }
 
-    // Encoding: Must match Rust exactly!
-    // 0 -> 0, 1 -> 1, 2 -> 2, 3+ -> log2(v/3)+3
+    // Fast encoding using lookup table
     public static int encodeTile(int value) {
-        if (value == 0) return 0;
-        if (value == 1) return 1;
-        if (value == 2) return 2;
-        int code = (int)(Math.log(value / 3.0) / Math.log(2)) + 3;
-        return Math.min(code, 14);
+        if (value > 6144) return 14;
+        if (value < 0) return 0;
+        return ENCODE_MAP[value];
     }
 
-    // Compute index for a tuple (Base 15) - Must match Rust!
-    private int getIndex(int[] tuple, int[] codes) {
-        int index = 0;
-        for (int pos : tuple) {
-            index = index * MAX_VAL_CODE + codes[pos];
-        }
-        return index;
-    }
-
+    // Optimized predict - reuses buffer and inlines index calculation
     public float predict(Tile[][] board) {
-        float sum = 0;
-        int[] codes = new int[16];
+        ensureBuffer();
+        
+        // Encode all tiles once
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
-                codes[r * 4 + c] = encodeTile(board[r][c].value);
+                codesBuffer[r * 4 + c] = encodeTile(board[r][c].value);
             }
         }
 
+        float sum = 0;
         for (int i = 0; i < tuples.size(); i++) {
-            int idx = getIndex(tuples.get(i), codes);
-            sum += weights.get(i)[idx];
+            int[] tuple = tuples.get(i);
+            // Inline index calculation for speed
+            int index = 0;
+            for (int pos : tuple) {
+                index = index * MAX_VAL_CODE + codesBuffer[pos];
+            }
+            sum += weights.get(i)[index];
         }
         return sum;
     }
 
     public void train(Tile[][] board, float targetG, float learningRate) {
+        ensureBuffer();
+        
         float currentPred = predict(board);
         float error = targetG - currentPred;
         float delta = error * learningRate;
         float splitDelta = delta / tuples.size();
 
-        int[] codes = new int[16];
-        for (int r = 0; r < 4; r++) {
-            for (int c = 0; c < 4; c++) {
-                codes[r * 4 + c] = encodeTile(board[r][c].value);
-            }
-        }
-
         for (int i = 0; i < tuples.size(); i++) {
-            int idx = getIndex(tuples.get(i), codes);
-            weights.get(i)[idx] += splitDelta;
+            int[] tuple = tuples.get(i);
+            int index = 0;
+            for (int pos : tuple) {
+                index = index * MAX_VAL_CODE + codesBuffer[pos];
+            }
+            weights.get(i)[index] += splitDelta;
         }
     }
 
     // ============== BINARY I/O (Rust Compatible - Little Endian) ==============
 
-    /**
-     * Load weights from Rust-exported binary file.
-     * Format: [numTables:u32] [tableSize:u32, weights:f32[]]...
-     */
     public void loadFromBinary(InputStream is) throws Exception {
         byte[] allBytes = readAllBytes(is);
         ByteBuffer buffer = ByteBuffer.wrap(allBytes).order(ByteOrder.LITTLE_ENDIAN);
 
         int numTables = buffer.getInt();
         
-        // Validate: must match our tuple count
         if (numTables != tuples.size()) {
             throw new Exception("Model mismatch: file has " + numTables + 
                 " tables, but Java expects " + tuples.size());
@@ -153,14 +168,11 @@ public class NTupleNetwork implements Serializable {
             }
             weights.add(table);
         }
+        
+        ensureBuffer();
     }
 
-    /**
-     * Export weights to Rust-compatible binary file.
-     * Format: [numTables:u32] [tableSize:u32, weights:f32[]]...
-     */
     public void exportToBinary(OutputStream os) throws Exception {
-        // Calculate total size
         int totalFloats = 0;
         for (float[] table : weights) {
             totalFloats += table.length;
@@ -168,11 +180,8 @@ public class NTupleNetwork implements Serializable {
         int totalBytes = 4 + weights.size() * 4 + totalFloats * 4;
         
         ByteBuffer buffer = ByteBuffer.allocate(totalBytes).order(ByteOrder.LITTLE_ENDIAN);
-        
-        // 1. Write number of tables
         buffer.putInt(weights.size());
         
-        // 2. Write each table
         for (float[] table : weights) {
             buffer.putInt(table.length);
             for (float weight : table) {

@@ -262,24 +262,44 @@ public class Game {
             if (board[r][c].value >= 3) score += Math.pow(3, getRankFromValue(board[r][c].value));
     }
 
-    // --- AI Logic & Training ---
+    // --- AI Logic & PBRS ---
 
-    // Hàm tính Reward thay cho PBRS cũ -> Dùng N-Tuple Brain
+    /**
+     * Calculate Total Value = Brain prediction + Composite Potential
+     * This is V(s) in Q-Learning terminology
+     */
     public float calculatePotential() {
         if (brain == null) return 0;
-        return brain.predict(board);
+        return brain.getTotalValue(board);
     }
 
+    /**
+     * Calculate Shaping Reward using PBRS formula
+     * F(s,s') = gamma * TotalValue(s') - TotalValue(s)
+     */
     public float calculateMoveReward(float phiOld, float phiNew) {
-        // Công thức PBRS: Reward = Gamma * Phi_New - Phi_Old
-        return (0.99f * phiNew) - phiOld;
+        float gamma = (brain != null) ? brain.gamma : 0.995f;
+        return (gamma * phiNew) - phiOld;
     }
 
-    // Lấy giá trị Potential hiện tại cho UI
-    // Lấy giá trị Potential hiện tại cho UI
+    /**
+     * Get Total Value (for UI display)
+     */
     public float getCurrentPotential() {
         if (brain == null) return 0f;
-        return brain.predict(board);
+        return brain.getTotalValue(board);
+    }
+    
+    /**
+     * Calculate Move Quality for a given board state
+     * Q(s,a) = Base Reward + gamma * TotalValue(s')
+     * This is what we display to teach the player
+     */
+    public float getMoveQuality(int scoreGain, Tile[][] newBoard) {
+        if (brain == null) return (float) scoreGain;
+        float gamma = brain.gamma;
+        float futureValue = brain.getTotalValue(newBoard);
+        return scoreGain + (gamma * futureValue);
     }
 
     // --- EXPECTIMAX MOVE EVALUATION (Fair AI - No Peeking) ---
@@ -388,8 +408,8 @@ public class Game {
                 // Rotate back to original orientation before prediction
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
-                // Predict potential
-                totalPotential += brain.predict(finalBoard);
+                // Predict potential using Total Value (Brain + Potential)
+                totalPotential += brain.getTotalValue(finalBoard);
                 count++;
             }
         }

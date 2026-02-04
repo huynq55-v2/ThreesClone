@@ -54,6 +54,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int AI_MOVE_DELAY_MS = 300;
     private static final int AUTO_RESET_DELAY_MS = 3000;
 
+    private android.media.ToneGenerator toneGen;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -77,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
 
         gestureDetector = new GestureDetector(this, new SwipeListener());
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        toneGen = new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100);
 
         btnReset.setOnClickListener(v -> startNewGame());
 
@@ -240,46 +243,78 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-            float diffY = e2.getY() - e1.getY();
-            float diffX = e2.getX() - e1.getX();
-            
             if (game.gameOver) return false;
 
-            boolean moved = false;
-            // 1. Capture state BEFORE move
-            float phiOld = game.calculatePotential();
-            int scoreBefore = game.score;
+            float diffY = e2.getY() - e1.getY();
+            float diffX = e2.getX() - e1.getX();
+            Direction chosenDir = null;
 
+            // 1. Xác định hướng vuốt
             if (Math.abs(diffX) > Math.abs(diffY)) {
                 if (Math.abs(diffX) > THRESHOLD && Math.abs(velocityX) > VELOCITY_THRESHOLD) {
-                    if (diffX > 0) moved = game.move(Direction.RIGHT);
-                    else moved = game.move(Direction.LEFT);
+                    chosenDir = (diffX > 0) ? Direction.RIGHT : Direction.LEFT;
                 }
             } else {
                 if (Math.abs(diffY) > THRESHOLD && Math.abs(velocityY) > VELOCITY_THRESHOLD) {
-                    if (diffY > 0) moved = game.move(Direction.DOWN);
-                    else moved = game.move(Direction.UP);
+                    chosenDir = (diffY > 0) ? Direction.DOWN : Direction.UP;
                 }
             }
 
-            if (moved) {
-                // 2. Capture state AFTER move
-                float phiNew = game.calculatePotential();
-                int scoreAfter = game.score;
-                
-                // 3. Calculate TOTAL Reward = Base Reward + Shaping Reward
-                float baseReward = (float)(scoreAfter - scoreBefore);
-                float shapingReward = game.calculateMoveReward(phiOld, phiNew);
-                float totalReward = baseReward + shapingReward;
-                
-                showReward(totalReward);
-                float freq = calculateFrequency(totalReward);
-                playSound(freq);
-                
-                updateUI();
+            // 2. Nếu có hướng vuốt hợp lệ, tiến hành đi và phán xét
+            if (chosenDir != null) {
+                // Lưu lại Potential cũ để hiện Reward (nếu bác vẫn muốn giữ text hiển thị)
+                float phiOld = game.calculatePotential();
+                int scoreBefore = game.score;
+
+                boolean moved = game.move(chosenDir);
+
+                if (moved) {
+                    // Tính toán phần thưởng để hiển thị Text (giữ lại logic hiển thị số nếu cần)
+                    float phiNew = game.calculatePotential();
+                    float totalReward = (game.score - scoreBefore) + game.calculateMoveReward(phiOld, phiNew);
+                    showReward(totalReward);
+
+                    // --- QUAN TRỌNG: GỌI HÀM PHÁN XÉT ---
+                    // Gọi hàm này để phát tiếng Tít/Tè và hiệu ứng màu sắc
+                    playJudgmentFeedback(chosenDir);
+
+                    updateUI();
+                }
             }
             return true;
         }
+    }
+
+    private void playJudgmentFeedback(Direction dir) {
+        // Lấy tỷ lệ % độ tốt của nước đi vừa thực hiện (Hàm này bác đã thêm vào Game.java)
+        float confidence = game.getMoveConfidence(dir);
+        
+        // Tìm View nền để chớp màu (Lấy content view mặc định của Activity)
+        final View bgView = findViewById(android.R.id.content);
+        
+        if (confidence >= 0.5f) {
+            // TÍT: Nước đi chiếm hơn 50% tổng trọng số các hướng (Ngon)
+            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150);
+            flashScreen(bgView, Color.parseColor("#3300FF00")); // Chớp Xanh nhạt
+        } else if (confidence < 0.2f) {
+            // TÈ: Nước đi rủi ro cao, dưới 20% (Dở)
+            toneGen.startTone(android.media.ToneGenerator.TONE_SUP_ERROR, 450);
+            flashScreen(bgView, Color.parseColor("#44FF0000")); // Chớp Đỏ nhạt
+            
+            // Rung để cảnh báo lỗi nặng
+            if (vibrator != null) {
+                vibrator.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE));
+            }
+        } else {
+            // CẠCH: Nước đi bình thường (Tiếng phản hồi hệ thống)
+            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 80);
+        }
+    }
+
+    private void flashScreen(View view, int color) {
+        view.setBackgroundColor(color);
+        // Sau 150ms trả về màu nền cũ (ở đây giả định là màu xám nhạt của game)
+        new Handler().postDelayed(() -> view.setBackgroundColor(Color.parseColor("#FAF8EF")), 150);
     }
 
     private void updateUI() {
@@ -422,5 +457,34 @@ public class MainActivity extends AppCompatActivity {
                 audioTrack.release();
             } catch (Exception e) {}
         }).start();
+    }
+
+    private void playJudgmentFeedback(Direction dir) {
+        float confidence = game.getMoveConfidence(dir);
+        
+        // Hiệu ứng Đồ họa: Chớp màu nền layout
+        View rootLayout = findViewById(R.id.rootLayout); // Đảm bảo ID này khớp với XML của bác
+        
+        if (confidence >= 0.5f) {
+            // TÍT: Nước đi tốt
+            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150);
+            flashScreen(Color.parseColor("#3300FF00")); // Xanh nhạt
+        } else if (confidence < 0.2f) {
+            // TÈ: Nước đi tệ
+            toneGen.startTone(android.media.ToneGenerator.TONE_SUP_ERROR, 400);
+            flashScreen(Color.parseColor("#44FF0000")); // Đỏ nhạt
+            // Rung mạnh báo lỗi
+            vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE));
+        } else {
+            // TRUNG BÌNH: Tiếng cạch nhẹ
+            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 50);
+        }
+    }
+
+    private void flashScreen(int color) {
+        View bg = findViewById(android.R.id.content);
+        int originalColor = Color.WHITE; // Hoặc màu nền mặc định của bác
+        bg.setBackgroundColor(color);
+        new Handler().postDelayed(() -> bg.setBackgroundColor(originalColor), 150);
     }
 }

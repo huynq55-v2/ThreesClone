@@ -468,4 +468,32 @@ public class Game {
             gameOver = true;
         }
     }
+
+    public float getMoveConfidence(Direction chosenDir) {
+        float[] qValues = new float[4];
+        Direction[] dirs = Direction.values();
+        float maxQ = -Float.MAX_VALUE;
+        float minQ = Float.MAX_VALUE;
+
+        // 1. Tính Q cho 4 hướng
+        for (int i = 0; i < 4; i++) {
+            qValues[i] = evaluateMove(dirs[i]);
+            if (qValues[i] != -Float.MAX_VALUE) {
+                if (qValues[i] > maxQ) maxQ = qValues[i];
+                if (qValues[i] < minQ) minQ = qValues[i];
+            }
+        }
+
+        // 2. Tính xem hướng đã chọn chiếm bao nhiêu % trong tổng "độ tốt"
+        // Dùng công thức (Q - Min) / (Sum(Q - Min))
+        float chosenQ = qValues[chosenDir.ordinal()];
+        if (chosenQ == -Float.MAX_VALUE) return 0f;
+
+        float sumDiff = 0;
+        for (float q : qValues) {
+            if (q != -Float.MAX_VALUE) sumDiff += (q - minQ + 1); // +1 để tránh chia cho 0
+        }
+
+        return (sumDiff > 0) ? (chosenQ - minQ + 1) / sumDiff : 0f;
+    }
 }

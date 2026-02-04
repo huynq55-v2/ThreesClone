@@ -523,20 +523,39 @@ public class NTupleNetwork implements Serializable {
     }
     
     // Export to binary (for saving to internal storage)
+    // Thay thế hàm exportToBinary cũ bằng hàm này
     public void exportToBinary(java.io.OutputStream os) throws Exception {
-        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(4 + weights.size() * 4 + 
-            weights.stream().mapToInt(w -> w.length).sum() * 4)
-            .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        org.msgpack.core.MessagePacker packer = org.msgpack.core.MessagePack.newDefaultPacker(os);
         
-        buffer.putInt(weights.size());
-        for (float[] table : weights) {
-            buffer.putInt(table.length);
-            for (float w : table) {
-                buffer.putFloat(w);
-            }
+        // Lưu dưới dạng Map để tương thích với hàm load cũ
+        packer.packMapHeader(6); // 6 trường: tuples, weights, alpha, gamma, w_empty, w_snake
+
+        // 1. Tuples
+        packer.packString("tuples");
+        packer.packArrayHeader(tuples.size());
+        for (TupleConfig t : tuples) {
+            packer.packMapHeader(2);
+            packer.packString("indices");
+            packer.packArrayHeader(t.indices.length);
+            for (int i : t.indices) packer.packLong(i);
+            packer.packString("weight_index");
+            packer.packLong(t.weightIndex);
         }
-        
-        os.write(buffer.array());
-        os.flush();
+
+        // 2. Weights
+        packer.packString("weights");
+        packer.packArrayHeader(weights.size());
+        for (float[] table : weights) {
+            packer.packArrayHeader(table.length);
+            for (float f : table) packer.packFloat(f);
+        }
+
+        // 3. Các thông số khác
+        packer.packString("alpha"); packer.packFloat(alpha);
+        packer.packString("gamma"); packer.packFloat(gamma);
+        packer.packString("w_empty"); packer.packFloat(wEmpty);
+        packer.packString("w_snake"); packer.packFloat(wSnake);
+
+        packer.close();
     }
 }

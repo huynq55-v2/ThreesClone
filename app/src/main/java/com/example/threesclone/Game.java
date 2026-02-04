@@ -265,29 +265,12 @@ public class Game {
     // --- AI Logic & PBRS ---
 
     /**
-     * Calculate Total Value = Brain prediction + Composite Potential
-     * This is V(s) in Q-Learning terminology
-     */
-    public float calculatePotential() {
-        if (brain == null) return 0;
-        return brain.getTotalValue(board);
-    }
-
-    /**
      * Calculate Shaping Reward using PBRS formula
      * F(s,s') = gamma * TotalValue(s') - TotalValue(s)
      */
     public float calculateMoveReward(float phiOld, float phiNew) {
         float gamma = (brain != null) ? brain.gamma : 0.995f;
         return (gamma * phiNew) - phiOld;
-    }
-
-    /**
-     * Get Total Value (for UI display)
-     */
-    public float getCurrentPotential() {
-        if (brain == null) return 0f;
-        return brain.getTotalValue(board);
     }
     
     /**
@@ -381,40 +364,29 @@ public class Game {
         if (!canMove(dir)) return -Float.MAX_VALUE;
         
         int rot = getRotationsNeeded(dir);
-        
-        // 1. Clone and rotate board to align with LEFT
         Tile[][] tempBoard = rotateBoardCopy(board, rot);
-        
-        // 2. Simulate shift (get moved rows)
         List<Integer> movedRows = simulateShiftOnBoard(tempBoard);
+        
         if (movedRows.isEmpty()) return -Float.MAX_VALUE;
         
-        // 3. Use hints list (fair play - no peeking at futureValue)
         List<Integer> possibleValues = hints.isEmpty() ? 
             java.util.Arrays.asList(1, 2, 3) : hints;
         
-        float totalPotential = 0f;
+        float totalV = 0f;
         int count = 0;
         
-        // 4. Expectimax: Average over all spawn positions × all hint values
         for (int row : movedRows) {
             for (int hintVal : possibleValues) {
-                // Clone the shifted board
                 Tile[][] evalBoard = cloneBoard(tempBoard);
-                
-                // Place the tile at spawn position (column 3 for LEFT shift)
                 evalBoard[row][3] = new Tile(hintVal);
-                
-                // Rotate back to original orientation before prediction
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
-                // Predict potential using Total Value (Brain + Potential)
-                totalPotential += brain.getTotalValue(finalBoard);
+                // SỬA TẠI ĐÂY: Dùng hàm getV thống nhất
+                totalV += getV(finalBoard); 
                 count++;
             }
         }
-        
-        return count > 0 ? totalPotential / count : 0f;
+        return count > 0 ? totalV / count : 0f;
     }
     
     /**
@@ -495,5 +467,71 @@ public class Game {
         }
 
         return (sumDiff > 0) ? (chosenQ - minQ + 1) / sumDiff : 0f;
+    }
+
+    // --- BỔ SUNG LOGIC POTENTIAL (EMPTY & SNAKE) ---
+    // Để khớp hoàn toàn với bản Rust bác đang train
+
+    public float calculateEmpty(Tile[][] boardState) {
+        int count = 0;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                if (boardState[r][c].value == 0) count++;
+            }
+        }
+        return (float) count;
+    }
+
+    public float calculateSnake(Tile[][] boardState) {
+        // Pattern ZigZag chuẩn bác đã chốt
+        float[] SNAKE_WEIGHTS = {
+            1073741824.0f, 268435456.0f, 67108864.0f, 16777216.0f, 
+            65536.0f,      262144.0f,    1048576.0f,  4194304.0f,  
+            16384.0f,      4096.0f,      1024.0f,     256.0f,      
+            1.0f,          4.0f,         16.0f,       64.0f        
+        };
+
+        float maxScore = 0;
+        // Kiểm tra 4 góc (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
+        // 1. Top-Left
+        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 0));
+        // 2. Top-Right (Mirror H)
+        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 1));
+        // 3. Bottom-Left (Mirror V)
+        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 2));
+        // 4. Bottom-Right (Mirror Both)
+        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 3));
+
+        return maxScore / 1073741824.0f; // CHỐT: Normalize về 1.0 như bản Rust
+    }
+
+    private float getSnakeScore(Tile[][] b, float[] weights, int mode) {
+        float score = 0;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                int tr = r, tc = c;
+                if (mode == 1) tc = 3 - c;
+                else if (mode == 2) tr = 3 - r;
+                else if (mode == 3) { tr = 3 - r; tc = 3 - c; }
+                
+                float rank = getRankFromValue(b[tr][tc].value);
+                score += rank * weights[r * 4 + c];
+            }
+        }
+        return score;
+    }
+
+    /**
+     * HÀM TỔNG HỢP V(s): Thay thế cho calculatePotential và getCurrentPotential bị trùng lặp
+     */
+    public float getV(Tile[][] boardState) {
+        if (brain == null) return 0;
+        
+        // V(s) = Neural Network Prediction + (w_empty * Phi_empty) + (w_snake * Phi_snake)
+        float networkPredict = brain.predict(boardState);
+        float phiEmpty = calculateEmpty(boardState);
+        float phiSnake = calculateSnake(boardState);
+        
+        return networkPredict + (brain.wEmpty * phiEmpty) + (brain.wSnake * phiSnake);
     }
 }

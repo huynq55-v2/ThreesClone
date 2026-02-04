@@ -129,13 +129,13 @@ public class MainActivity extends AppCompatActivity {
         Direction bestDir = game.getBestMove();
         if (bestDir != null) {
             // 1. Capture state BEFORE move
-            float phiOld = game.calculatePotential();
+            float phiOld = game.getV(game.board);
             int scoreBefore = game.score;
             
             boolean moved = game.move(bestDir);
             if (moved) {
                 // 2. Capture state AFTER move
-                float phiNew = game.calculatePotential();
+                float phiNew = game.getV(game.board);
                 int scoreAfter = game.score;
                 
                 // 3. Calculate TOTAL Reward = Base Reward + Shaping Reward
@@ -205,23 +205,23 @@ public class MainActivity extends AppCompatActivity {
     private void loadExternalBrain(Uri uri) {
         try {
             InputStream is = getContentResolver().openInputStream(uri);
-            if (game.brain == null) {
-                game.brain = new NTupleNetwork();
-            }
-            game.brain.loadFromBinary(is);
+            // Load vào một object tạm trước
+            NTupleNetwork newBrain = new NTupleNetwork();
+            newBrain.loadFromBinary(is);
             is.close();
             
-            // Auto save to internal storage for next launch
-            game.saveBrain();
+            // Gán cho game hiện tại
+            game.brain = newBrain;
+            
+            // LƯU LẠI VÀO BỘ NHỚ TRONG (Internal Storage)
+            game.saveBrain(); 
             
             updateUI();
-            Toast.makeText(this, "🧠 Brain loaded successfuly!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "🧠 Não đã được 'nhập khẩu' vĩnh viễn!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "❌ Error loading brain: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            // Log.e("AI_LOAD", "Lỗi: ", e);
         }
     }
-
-
 
     private void startNewGame() {
         game = new Game(this);
@@ -263,19 +263,18 @@ public class MainActivity extends AppCompatActivity {
             // 2. Nếu có hướng vuốt hợp lệ, tiến hành đi và phán xét
             if (chosenDir != null) {
                 // Lưu lại Potential cũ để hiện Reward (nếu bác vẫn muốn giữ text hiển thị)
-                float phiOld = game.calculatePotential();
+                float phiOld = game.getV(game.board);
                 int scoreBefore = game.score;
 
                 boolean moved = game.move(chosenDir);
 
                 if (moved) {
-                    // Tính toán phần thưởng để hiển thị Text (giữ lại logic hiển thị số nếu cần)
-                    float phiNew = game.calculatePotential();
-                    float totalReward = (game.score - scoreBefore) + game.calculateMoveReward(phiOld, phiNew);
-                    showReward(totalReward);
+                    // Dùng getV() đồng bộ với Game.java
+                    // float phiNew = game.getV(game.board);
+                    // float totalReward = (game.score - scoreBefore) + game.calculateMoveReward(phiOld, phiNew);
+                    // showReward(totalReward);
 
-                    // --- QUAN TRỌNG: GỌI HÀM PHÁN XÉT ---
-                    // Gọi hàm này để phát tiếng Tít/Tè và hiệu ứng màu sắc
+                    // Phát tín hiệu phán xét (Tít/Tè)
                     playJudgmentFeedback(chosenDir);
 
                     updateUI();
@@ -457,34 +456,5 @@ public class MainActivity extends AppCompatActivity {
                 audioTrack.release();
             } catch (Exception e) {}
         }).start();
-    }
-
-    private void playJudgmentFeedback(Direction dir) {
-        float confidence = game.getMoveConfidence(dir);
-        
-        // Hiệu ứng Đồ họa: Chớp màu nền layout
-        View rootLayout = findViewById(R.id.rootLayout); // Đảm bảo ID này khớp với XML của bác
-        
-        if (confidence >= 0.5f) {
-            // TÍT: Nước đi tốt
-            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150);
-            flashScreen(Color.parseColor("#3300FF00")); // Xanh nhạt
-        } else if (confidence < 0.2f) {
-            // TÈ: Nước đi tệ
-            toneGen.startTone(android.media.ToneGenerator.TONE_SUP_ERROR, 400);
-            flashScreen(Color.parseColor("#44FF0000")); // Đỏ nhạt
-            // Rung mạnh báo lỗi
-            vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE));
-        } else {
-            // TRUNG BÌNH: Tiếng cạch nhẹ
-            toneGen.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 50);
-        }
-    }
-
-    private void flashScreen(int color) {
-        View bg = findViewById(android.R.id.content);
-        int originalColor = Color.WHITE; // Hoặc màu nền mặc định của bác
-        bg.setBackgroundColor(color);
-        new Handler().postDelayed(() -> bg.setBackgroundColor(originalColor), 150);
     }
 }

@@ -372,74 +372,111 @@ public class NTupleNetwork implements Serializable {
     
     // Legacy binary format loader (for backwards compatibility)
     public void loadFromBinary(InputStream is) throws Exception {
-        // Try MessagePack first, fall back to legacy if it fails
         byte[] allBytes = readAllBytes(is);
-        
-        // Check if it looks like MessagePack (starts with array/map marker)
-        if (allBytes.length > 0 && (allBytes[0] & 0xFF) >= 0x90) {
-            // Likely MessagePack format
+        if (allBytes.length == 0) return;
+
+        // THỨ TỰ ƯU TIÊN 1: Thử load bằng MessagePack (vì đây là chuẩn mới)
+        try {
+            android.util.Log.d("AI_LOAD", "Attempting MessagePack load...");
             loadFromMessagePackBytes(allBytes);
-        } else {
-            // Legacy binary format
-            loadFromLegacyBinary(allBytes);
+            android.util.Log.d("AI_LOAD", "MessagePack Load Success!");
+            return; // Thành công thì thoát luôn
+        } catch (Exception e) {
+            android.util.Log.w("AI_LOAD", "MessagePack failed: " + e.getMessage());
+        }
+
+        // THỨ TỰ ƯU TIÊN 2: Nếu MessagePack lỗi, thử Legacy nhưng phải CỰC KỲ CẨN THẬN
+        try {
+            android.util.Log.d("AI_LOAD", "Attempting Legacy Binary load...");
+            
+            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(allBytes)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            
+            int numTables = buffer.getInt();
+            
+            // KIỂM TRA ĐỘ AN TOÀN (Sanity Check)
+            // Nếu numTables > 1000 hoặc số lượng quá vô lý, dừng ngay không cấp phát RAM
+            if (numTables <= 0 || numTables > 1000) {
+                throw new Exception("Vô lý! Số lượng table (" + numTables + ") quá lớn hoặc sai định dạng.");
+            }
+
+            // Chỉ chạy tiếp nếu numTables hợp lý
+            this.tuples.clear();
+            this.weights.clear();
+            for (int i = 0; i < numTables; i++) {
+                int tableSize = buffer.getInt();
+                if (tableSize <= 0 || tableSize > 1000000) throw new Exception("Table size quá lớn");
+                
+                float[] table = new float[tableSize];
+                for (int j = 0; j < tableSize; j++) {
+                    table[j] = buffer.getFloat();
+                }
+                this.weights.add(table);
+            }
+            android.util.Log.d("AI_LOAD", "Legacy Load Success!");
+            
+        } catch (Exception e) {
+            android.util.Log.e("AI_LOAD", "Tất cả các phương thức load đều thất bại: " + e.getMessage());
+            throw new Exception("File model không đúng định dạng hoặc bị hỏng.");
         }
     }
     
     private void loadFromMessagePackBytes(byte[] data) throws Exception {
         MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(data);
         
-        // Read struct as map (serde serializes structs as maps)
+        // Đọc Map Header (Số lượng trường trong Struct Rust)
         int mapSize = unpacker.unpackMapHeader();
         
         for (int m = 0; m < mapSize; m++) {
             String key = unpacker.unpackString();
             
-            if (key.equals("tuples")) {
-                int numTuples = unpacker.unpackArrayHeader();
-                tuples.clear();
-                for (int i = 0; i < numTuples; i++) {
-                    int tupleMapSize = unpacker.unpackMapHeader();
-                    int[] indices = null;
-                    int weightIndex = 0;
-                    
-                    for (int j = 0; j < tupleMapSize; j++) {
-                        String tupleKey = unpacker.unpackString();
-                        if (tupleKey.equals("indices")) {
-                            int arrLen = unpacker.unpackArrayHeader();
-                            indices = new int[arrLen];
-                            for (int k = 0; k < arrLen; k++) {
-                                indices[k] = (int) unpacker.unpackLong();
+            switch (key) {
+                case "tuples":
+                    int numTuples = unpacker.unpackArrayHeader();
+                    this.tuples.clear();
+                    for (int i = 0; i < numTuples; i++) {
+                        // Mỗi tuple trong Rust là 1 struct -> Map trong MsgPack
+                        int tupleMapSize = unpacker.unpackMapHeader();
+                        int[] indices = null;
+                        int weightIndex = 0;
+                        for (int j = 0; j < tupleMapSize; j++) {
+                            String tKey = unpacker.unpackString();
+                            if (tKey.equals("indices")) {
+                                int arrLen = unpacker.unpackArrayHeader();
+                                indices = new int[arrLen];
+                                for (int k = 0; k < arrLen; k++) indices[k] = (int)unpacker.unpackLong();
+                            } else if (tKey.equals("weight_index")) {
+                                weightIndex = (int)unpacker.unpackLong();
                             }
-                        } else if (tupleKey.equals("weight_index")) {
-                            weightIndex = (int) unpacker.unpackLong();
                         }
+                        this.tuples.add(new TupleConfig(indices, weightIndex));
                     }
-                    tuples.add(new TupleConfig(indices, weightIndex));
-                }
-            } else if (key.equals("weights")) {
-                int numWeightTables = unpacker.unpackArrayHeader();
-                weights.clear();
-                for (int i = 0; i < numWeightTables; i++) {
-                    int tableSize = unpacker.unpackArrayHeader();
-                    float[] table = new float[tableSize];
-                    for (int j = 0; j < tableSize; j++) {
-                        table[j] = unpacker.unpackFloat();
+                    break;
+
+                case "weights":
+                    int numTables = unpacker.unpackArrayHeader();
+                    this.weights.clear();
+                    for (int i = 0; i < numTables; i++) {
+                        int tableLen = unpacker.unpackArrayHeader();
+                        float[] table = new float[tableLen];
+                        for (int j = 0; j < tableLen; j++) table[j] = unpacker.unpackFloat();
+                        this.weights.add(table);
                     }
-                    weights.add(table);
-                }
-            } else if (key.equals("alpha")) {
-                alpha = unpacker.unpackFloat();
-            } else if (key.equals("gamma")) {
-                gamma = unpacker.unpackFloat();
-            } else if (key.equals("w_empty")) {
-                wEmpty = unpacker.unpackFloat();
-            } else if (key.equals("w_snake")) {
-                wSnake = unpacker.unpackFloat();
+                    break;
+
+                case "alpha": this.alpha = unpacker.unpackFloat(); break;
+                case "gamma": this.gamma = unpacker.unpackFloat(); break;
+                case "w_empty": this.wEmpty = unpacker.unpackFloat(); break;
+                case "w_snake": this.wSnake = unpacker.unpackFloat(); break;
+                
+                default:
+                    // QUAN TRỌNG: Nếu gặp key lạ (ví dụ w_disorder), phải skip nó 
+                    // để không làm lệch pointer của unpacker
+                    unpacker.skipValue();
+                    break;
             }
         }
-        
         unpacker.close();
-        ensureBuffer();
     }
     
     private void loadFromLegacyBinary(byte[] data) throws Exception {

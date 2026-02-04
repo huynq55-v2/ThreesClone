@@ -51,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean aiModeEnabled = false;
     private Handler aiHandler = new Handler();
     private Button btnAI;
+    private Button btnEvalMode;
     private static final int AI_MOVE_DELAY_MS = 300;
     private static final int AUTO_RESET_DELAY_MS = 3000;
 
@@ -87,6 +88,10 @@ public class MainActivity extends AppCompatActivity {
         btnAI = findViewById(R.id.btnAI);
         btnAI.setOnClickListener(v -> toggleAIMode());
 
+        // --- EVAL MODE TOGGLE (AVG vs SAFE) ---
+        btnEvalMode = findViewById(R.id.btnEvalMode);
+        btnEvalMode.setOnClickListener(v -> toggleEvalMode());
+
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
@@ -115,6 +120,22 @@ public class MainActivity extends AppCompatActivity {
             btnAI.setText("🤖 AI");
             btnAI.setBackgroundColor(Color.LTGRAY);
             aiHandler.removeCallbacksAndMessages(null);
+        }
+    }
+
+    private void toggleEvalMode() {
+        game.toggleEvalMode();
+        updateEvalModeButton();
+        Toast.makeText(this, "Chế độ: " + game.getEvalModeName(), Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateEvalModeButton() {
+        String label = game.getEvalModeName();
+        btnEvalMode.setText(label);
+        if (game.evalMode == Game.EvalMode.SAFE) {
+            btnEvalMode.setBackgroundColor(Color.parseColor("#2196F3")); // Blue for SAFE
+        } else {
+            btnEvalMode.setBackgroundColor(Color.LTGRAY); // Gray for AVG
         }
     }
 
@@ -229,6 +250,7 @@ public class MainActivity extends AppCompatActivity {
         tvGameOver.setVisibility(View.GONE);
         tvGameOver.setTextColor(Color.RED);
         tvReward.setVisibility(View.GONE);
+        updateEvalModeButton(); // Sync button state with game
         updateUI();
     }
 

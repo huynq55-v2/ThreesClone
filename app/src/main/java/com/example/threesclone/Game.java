@@ -24,6 +24,10 @@ public class Game {
     // AI Brain (Read-Only)
     public NTupleNetwork brain;
     private Context context;
+    
+    // Evaluation Mode: EXPECTIMAX (average) or SAFE (worst-case)
+    public enum EvalMode { EXPECTIMAX, SAFE }
+    public EvalMode evalMode = EvalMode.EXPECTIMAX;
 
     // Consts
     private static final int K_NUMBER_RANDOMNESS = 4;
@@ -388,6 +392,43 @@ public class Game {
         }
         return count > 0 ? totalV / count : 0f;
     }
+
+    public float evaluateSafeMove(Direction dir) {
+        if (brain == null) return 0f;
+        if (!canMove(dir)) return -Float.MAX_VALUE;
+        
+        int rot = getRotationsNeeded(dir);
+        Tile[][] tempBoard = rotateBoardCopy(board, rot);
+        List<Integer> movedRows = simulateShiftOnBoard(tempBoard);
+        
+        if (movedRows.isEmpty()) return -Float.MAX_VALUE;
+        
+        List<Integer> possibleValues = hints.isEmpty() ? 
+            java.util.Arrays.asList(1, 2, 3) : hints;
+        
+        // Bắt đầu với một giá trị cực lớn để tìm Min
+        float worstCaseV = Float.MAX_VALUE; 
+        
+        // Duyệt qua mọi vị trí rơi và mọi giá trị Tile có thể
+        for (int row : movedRows) {
+            for (int hintVal : possibleValues) {
+                Tile[][] evalBoard = cloneBoard(tempBoard);
+                evalBoard[row][3] = new Tile(hintVal);
+                Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
+                
+                // Lấy giá trị của bàn cờ này
+                float currentV = getV(finalBoard); 
+                
+                // CHANCE NODE: Thay vì cộng dồn, ta lấy cái Tệ nhất (Min)
+                if (currentV < worstCaseV) {
+                    worstCaseV = currentV;
+                }
+            }
+        }
+        
+        // Trả về kịch bản đen tối nhất của hướng đi này
+        return worstCaseV;
+    }
     
     /**
      * Get the best move direction using Expectimax (depth=1).
@@ -398,13 +439,25 @@ public class Game {
         float bestValue = -Float.MAX_VALUE;
         
         for (Direction dir : Direction.values()) {
-            float value = evaluateMove(dir);
+            // Dùng hàm evaluate tương ứng với mode đang chọn
+            float value = (evalMode == EvalMode.SAFE) 
+                ? evaluateSafeMove(dir) 
+                : evaluateMove(dir);
             if (value > bestValue) {
                 bestValue = value;
                 bestDir = dir;
             }
         }
         return bestDir;
+    }
+    
+    // Toggle chế độ đánh giá
+    public void toggleEvalMode() {
+        evalMode = (evalMode == EvalMode.EXPECTIMAX) ? EvalMode.SAFE : EvalMode.EXPECTIMAX;
+    }
+    
+    public String getEvalModeName() {
+        return (evalMode == EvalMode.SAFE) ? "🛡️ SAFE" : "📊 AVG";
     }
 
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
@@ -447,9 +500,11 @@ public class Game {
         float maxQ = -Float.MAX_VALUE;
         float minQ = Float.MAX_VALUE;
 
-        // 1. Tính Q cho 4 hướng
+        // 1. Tính Q cho 4 hướng (sử dụng cùng mode đang chọn)
         for (int i = 0; i < 4; i++) {
-            qValues[i] = evaluateMove(dirs[i]);
+            qValues[i] = (evalMode == EvalMode.SAFE) 
+                ? evaluateSafeMove(dirs[i]) 
+                : evaluateMove(dirs[i]);
             if (qValues[i] != -Float.MAX_VALUE) {
                 if (qValues[i] > maxQ) maxQ = qValues[i];
                 if (qValues[i] < minQ) minQ = qValues[i];
@@ -457,13 +512,12 @@ public class Game {
         }
 
         // 2. Tính xem hướng đã chọn chiếm bao nhiêu % trong tổng "độ tốt"
-        // Dùng công thức (Q - Min) / (Sum(Q - Min))
         float chosenQ = qValues[chosenDir.ordinal()];
         if (chosenQ == -Float.MAX_VALUE) return 0f;
 
         float sumDiff = 0;
         for (float q : qValues) {
-            if (q != -Float.MAX_VALUE) sumDiff += (q - minQ + 1); // +1 để tránh chia cho 0
+            if (q != -Float.MAX_VALUE) sumDiff += (q - minQ + 1);
         }
 
         return (sumDiff > 0) ? (chosenQ - minQ + 1) / sumDiff : 0f;

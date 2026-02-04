@@ -125,12 +125,22 @@ public class MainActivity extends AppCompatActivity {
         
         Direction bestDir = game.getBestMove();
         if (bestDir != null) {
+            // 1. Capture state BEFORE move
             float phiOld = game.calculatePotential();
+            int scoreBefore = game.score;
+            
             boolean moved = game.move(bestDir);
             if (moved) {
+                // 2. Capture state AFTER move
                 float phiNew = game.calculatePotential();
-                float reward = game.calculateMoveReward(phiOld, phiNew);
-                showReward(reward);
+                int scoreAfter = game.score;
+                
+                // 3. Calculate TOTAL Reward = Base Reward + Shaping Reward
+                float baseReward = (float)(scoreAfter - scoreBefore);
+                float shapingReward = game.calculateMoveReward(phiOld, phiNew);
+                float totalReward = baseReward + shapingReward;
+                
+                showReward(totalReward);
                 updateUI();
             }
         }
@@ -236,8 +246,9 @@ public class MainActivity extends AppCompatActivity {
             if (game.gameOver) return false;
 
             boolean moved = false;
-            // 1. Hỏi AI xem bàn cờ cũ ngon cỡ nào
+            // 1. Capture state BEFORE move
             float phiOld = game.calculatePotential();
+            int scoreBefore = game.score;
 
             if (Math.abs(diffX) > Math.abs(diffY)) {
                 if (Math.abs(diffX) > THRESHOLD && Math.abs(velocityX) > VELOCITY_THRESHOLD) {
@@ -252,14 +263,17 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (moved) {
-                // 2. Hỏi AI xem bàn cờ mới ngon cỡ nào
+                // 2. Capture state AFTER move
                 float phiNew = game.calculatePotential();
+                int scoreAfter = game.score;
                 
-                // 3. Tính reward chênh lệch để hiển thị
-                float reward = game.calculateMoveReward(phiOld, phiNew);
+                // 3. Calculate TOTAL Reward = Base Reward + Shaping Reward
+                float baseReward = (float)(scoreAfter - scoreBefore);
+                float shapingReward = game.calculateMoveReward(phiOld, phiNew);
+                float totalReward = baseReward + shapingReward;
                 
-                showReward(reward);
-                float freq = calculateFrequency(reward);
+                showReward(totalReward);
+                float freq = calculateFrequency(totalReward);
                 playSound(freq);
                 
                 updateUI();

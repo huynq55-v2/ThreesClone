@@ -51,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean aiModeEnabled = false;
     private Handler aiHandler = new Handler();
     private Button btnAI;
+    private Button btnEvalMode;
     private static final int AI_MOVE_DELAY_MS = 300;
     private static final int AUTO_RESET_DELAY_MS = 3000;
 
@@ -90,6 +91,15 @@ public class MainActivity extends AppCompatActivity {
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
+        // --- EVAL MODE TOGGLE ---
+        btnEvalMode = findViewById(R.id.btnEvalMode);
+        btnEvalMode.setOnClickListener(v -> {
+            if (game != null) {
+                game.useSafeMinimax = !game.useSafeMinimax;
+                updateEvalModeButton();
+            }
+        });
+
         // --- HINT CLICK: Show Best Move ---
         layoutHints.setOnClickListener(v -> showBestMoveHint());
 
@@ -119,7 +129,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateEvalModeButton() {
-        // Mode is fixed to Expectimax
+        if (game == null || btnEvalMode == null) return;
+        if (game.useSafeMinimax) {
+            btnEvalMode.setText("🛡️ SAFE");
+            btnEvalMode.setBackgroundColor(Color.parseColor("#FF9800")); // Orange warning
+        } else {
+            btnEvalMode.setText("📊 AVG");
+            btnEvalMode.setBackgroundColor(Color.LTGRAY);
+        }
     }
 
     private void scheduleNextAIMove() {
@@ -228,7 +245,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startNewGame() {
+        boolean oldSafe = (game != null) ? game.useSafeMinimax : false;
         game = new Game(this);
+        game.useSafeMinimax = oldSafe;
         
         tvGameOver.setVisibility(View.GONE);
         tvGameOver.setTextColor(Color.RED);

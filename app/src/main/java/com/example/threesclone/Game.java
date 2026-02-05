@@ -380,8 +380,67 @@ public class Game {
      * @param dir Direction to evaluate
      * @return Move Quality (Q), or -Double.MAX_VALUE if move is invalid
      */
+    // Toggle for Minimax (Safe) vs Expectimax (Avg)
+    public boolean useSafeMinimax = false;
+
     public double evaluateMove(Direction dir) {
         if (brain == null) return 0.0;
+        if (useSafeMinimax) {
+            return evaluateMoveSafe(dir);
+        } else {
+            return evaluateMoveExpectimax(dir);
+        }
+    }
+
+    /**
+     * Minimax Safe Policy: Q = R + gamma * min(V_outcomes)
+     * Robustness against worst-case spawn.
+     * Uses brain.predict() directly (No Potential), as requested.
+     */
+    public double evaluateMoveSafe(Direction dir) {
+        if (!canMove(dir)) return -Double.MAX_VALUE;
+        
+        int rot = getRotationsNeeded(dir);
+        Tile[][] tempBoard = rotateBoardCopy(board, rot);
+        
+        SimulationResult sim = simulateShiftOnBoard(tempBoard);
+        if (sim.movedRows.isEmpty()) return -Double.MAX_VALUE;
+        
+        double R = sim.totalScoreGain;
+        double currentGamma = brain.gamma;
+        
+        List<Integer> possibleValues = hints.isEmpty() ? 
+            java.util.Arrays.asList(1, 2, 3) : hints;
+            
+        double minQuality = Double.MAX_VALUE;
+        boolean hasOutcomes = false;
+
+        for (int row : sim.movedRows) {
+            for (int hintVal : possibleValues) {
+                Tile[][] evalBoard = cloneBoard(tempBoard);
+                evalBoard[row][3] = new Tile(hintVal);
+                Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
+                
+                // CORE LOGIC: min( R + gamma * V_predict )
+                // Note: Using predict() directly to exclude Potential, per safe policy requirements
+                double futureV = brain.predict(finalBoard);
+                double quality = R + (currentGamma * futureV);
+                
+                if (quality < minQuality) {
+                    minQuality = quality;
+                }
+                hasOutcomes = true;
+            }
+        }
+        
+        return hasOutcomes ? minQuality : -Double.MAX_VALUE;
+    }
+
+    /**
+     * Expectimax: Q = R + gamma * avg(V_outcomes)
+     * Original logic, preserving potential + predict
+     */
+    public double evaluateMoveExpectimax(Direction dir) {
         if (!canMove(dir)) return -Double.MAX_VALUE;
         
         int rot = getRotationsNeeded(dir);
@@ -406,6 +465,7 @@ public class Game {
                 evalBoard[row][3] = new Tile(hintVal);
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
+                // Original: used getV() which includes Potential
                 totalFutureV += getV(finalBoard); 
                 count++;
             }

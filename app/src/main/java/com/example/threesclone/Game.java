@@ -281,8 +281,8 @@ public class Game {
      * Q(s,a) = Base Reward + gamma * TotalValue(s')
      * This is what we display to teach the player
      */
-    public double getMoveQuality(int scoreGain, Tile[][] newBoard) {
-        if (brain == null) return (double) scoreGain;
+    public double getMoveQuality(double scoreGain, Tile[][] newBoard) {
+        if (brain == null) return scoreGain;
         double gamma = brain.gamma;
         double futureValue = brain.getTotalValue(newBoard);
         return scoreGain + (gamma * futureValue);
@@ -323,8 +323,9 @@ public class Game {
         return Math.pow(3, rank);
     }
 
-    // Process single row on a board copy, returns SCORE GAIN from merges
-    private int processSingleRowOnBoard(Tile[][] board, int r) {
+    // Process single row on a board copy, returns SCORE GAIN from merges (double)
+    // Returns Double.NaN if no movement possible
+    private double processSingleRowOnBoard(Tile[][] board, int r) {
         for (int c = 0; c < 3; c++) {
             int target = board[r][c].value;
             int source = board[r][c+1].value;
@@ -348,15 +349,15 @@ public class Game {
                     board[r][k] = board[r][k+1];
                 }
                 board[r][3] = new Tile(0);
-                return (int)gain;
+                return gain;
             }
         }
-        return -1; // -1 means no movement possible
+        return Double.NaN; // NaN means no movement possible
     }
     
     // Result holder for simulation
     private static class SimulationResult {
-        int totalScoreGain = 0;
+        double totalScoreGain = 0.0;
         List<Integer> movedRows = new ArrayList<>();
     }
     
@@ -364,8 +365,8 @@ public class Game {
     private SimulationResult simulateShiftOnBoard(Tile[][] board) {
         SimulationResult result = new SimulationResult();
         for (int r = 0; r < 4; r++) {
-            int gain = processSingleRowOnBoard(board, r);
-            if (gain != -1) {
+            double gain = processSingleRowOnBoard(board, r);
+            if (!Double.isNaN(gain)) {
                 result.totalScoreGain += gain;
                 result.movedRows.add(r);
             }
@@ -390,7 +391,7 @@ public class Game {
         SimulationResult sim = simulateShiftOnBoard(tempBoard);
         if (sim.movedRows.isEmpty()) return -Double.MAX_VALUE;
         
-        double R = (double) sim.totalScoreGain;
+        double R = sim.totalScoreGain;
         
         // 2. Calculate Expected Future Value (V)
         List<Integer> possibleValues = hints.isEmpty() ? 

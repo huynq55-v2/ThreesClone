@@ -25,9 +25,8 @@ public class Game {
     public NTupleNetwork brain;
     private Context context;
     
-    // Evaluation Mode: EXPECTIMAX (average) or SAFE (worst-case)
-    public enum EvalMode { EXPECTIMAX, SAFE }
-    public EvalMode evalMode = EvalMode.EXPECTIMAX;
+    // Evaluation Mode: ALWAYS EXPECTIMAX (Q = R + gamma * V)
+    public double gamma = 0.995; // Default if brain not loaded
 
     // Consts
     private static final int K_NUMBER_RANDOMNESS = 4;
@@ -272,8 +271,8 @@ public class Game {
      * Calculate Shaping Reward using PBRS formula
      * F(s,s') = gamma * TotalValue(s') - TotalValue(s)
      */
-    public float calculateMoveReward(float phiOld, float phiNew) {
-        float gamma = (brain != null) ? brain.gamma : 0.995f;
+    public double calculateMoveReward(double phiOld, double phiNew) {
+        double gamma = (brain != null) ? brain.gamma : 0.995;
         return (gamma * phiNew) - phiOld;
     }
     
@@ -282,10 +281,10 @@ public class Game {
      * Q(s,a) = Base Reward + gamma * TotalValue(s')
      * This is what we display to teach the player
      */
-    public float getMoveQuality(int scoreGain, Tile[][] newBoard) {
-        if (brain == null) return (float) scoreGain;
-        float gamma = brain.gamma;
-        float futureValue = brain.getTotalValue(newBoard);
+    public double getMoveQuality(int scoreGain, Tile[][] newBoard) {
+        if (brain == null) return (double) scoreGain;
+        double gamma = brain.gamma;
+        double futureValue = brain.getTotalValue(newBoard);
         return scoreGain + (gamma * futureValue);
     }
 
@@ -318,8 +317,14 @@ public class Game {
         return result;
     }
     
-    // Process single row on a board copy, returns true if moved
-    private boolean processSingleRowOnBoard(Tile[][] board, int r) {
+    private double getTileScore(int val) {
+        if (val < 3) return 0.0;
+        int rank = (int) (Math.log(val / 3.0) / Math.log(2)) + 1;
+        return Math.pow(3, rank);
+    }
+
+    // Process single row on a board copy, returns SCORE GAIN from merges
+    private int processSingleRowOnBoard(Tile[][] board, int r) {
         for (int c = 0; c < 3; c++) {
             int target = board[r][c].value;
             int source = board[r][c+1].value;
@@ -335,114 +340,89 @@ public class Game {
             }
             
             if (newVal != -1) {
+                // Calculate Reward: score(new) - [score(target) + score(source)]
+                double gain = getTileScore(newVal) - (getTileScore(target) + getTileScore(source));
+                
                 board[r][c] = new Tile(newVal);
                 for (int k = c + 1; k < 3; k++) {
                     board[r][k] = board[r][k+1];
                 }
                 board[r][3] = new Tile(0);
-                return true;
+                return (int)gain;
             }
         }
-        return false;
+        return -1; // -1 means no movement possible
     }
     
-    // Simulate shift on board copy, returns list of moved rows (aligned to LEFT)
-    private List<Integer> simulateShiftOnBoard(Tile[][] board) {
+    // Result holder for simulation
+    private static class SimulationResult {
+        int totalScoreGain = 0;
         List<Integer> movedRows = new ArrayList<>();
+    }
+    
+    // Simulate shift on board copy, returns score gain and moved rows
+    private SimulationResult simulateShiftOnBoard(Tile[][] board) {
+        SimulationResult result = new SimulationResult();
         for (int r = 0; r < 4; r++) {
-            if (processSingleRowOnBoard(board, r)) {
-                movedRows.add(r);
+            int gain = processSingleRowOnBoard(board, r);
+            if (gain != -1) {
+                result.totalScoreGain += gain;
+                result.movedRows.add(r);
             }
         }
-        return movedRows;
+        return result;
     }
     
     /**
-     * Evaluate a move using Expectimax (without cheating).
-     * Uses hints list and all possible spawn positions to calculate expected potential.
+     * Evaluate a move using Expectimax.
+     * Formula: Q(s,a) = Immediate Reward (R) + gamma * Expected Future Value (V)
      * @param dir Direction to evaluate
-     * @return Expected potential after the move, or -Float.MAX_VALUE if move is invalid
+     * @return Move Quality (Q), or -Double.MAX_VALUE if move is invalid
      */
-    public float evaluateMove(Direction dir) {
-        if (brain == null) return 0f;
-        if (!canMove(dir)) return -Float.MAX_VALUE;
+    public double evaluateMove(Direction dir) {
+        if (brain == null) return 0.0;
+        if (!canMove(dir)) return -Double.MAX_VALUE;
         
         int rot = getRotationsNeeded(dir);
         Tile[][] tempBoard = rotateBoardCopy(board, rot);
-        List<Integer> movedRows = simulateShiftOnBoard(tempBoard);
         
-        if (movedRows.isEmpty()) return -Float.MAX_VALUE;
+        // 1. Get Immediate Reward (R) through simulation
+        SimulationResult sim = simulateShiftOnBoard(tempBoard);
+        if (sim.movedRows.isEmpty()) return -Double.MAX_VALUE;
         
+        double R = (double) sim.totalScoreGain;
+        
+        // 2. Calculate Expected Future Value (V)
         List<Integer> possibleValues = hints.isEmpty() ? 
             java.util.Arrays.asList(1, 2, 3) : hints;
         
-        float totalV = 0f;
+        double totalFutureV = 0.0;
         int count = 0;
         
-        for (int row : movedRows) {
+        for (int row : sim.movedRows) {
             for (int hintVal : possibleValues) {
                 Tile[][] evalBoard = cloneBoard(tempBoard);
                 evalBoard[row][3] = new Tile(hintVal);
                 Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
                 
-                // SỬA TẠI ĐÂY: Dùng hàm getV thống nhất
-                totalV += getV(finalBoard); 
+                totalFutureV += getV(finalBoard); 
                 count++;
             }
         }
-        return count > 0 ? totalV / count : 0f;
-    }
-
-    public float evaluateSafeMove(Direction dir) {
-        if (brain == null) return 0f;
-        if (!canMove(dir)) return -Float.MAX_VALUE;
         
-        int rot = getRotationsNeeded(dir);
-        Tile[][] tempBoard = rotateBoardCopy(board, rot);
-        List<Integer> movedRows = simulateShiftOnBoard(tempBoard);
+        double expectedV = (count > 0) ? (totalFutureV / count) : 0.0;
+        double currentGamma = brain.gamma;
         
-        if (movedRows.isEmpty()) return -Float.MAX_VALUE;
-        
-        List<Integer> possibleValues = hints.isEmpty() ? 
-            java.util.Arrays.asList(1, 2, 3) : hints;
-        
-        // Bắt đầu với một giá trị cực lớn để tìm Min
-        float worstCaseV = Float.MAX_VALUE; 
-        
-        // Duyệt qua mọi vị trí rơi và mọi giá trị Tile có thể
-        for (int row : movedRows) {
-            for (int hintVal : possibleValues) {
-                Tile[][] evalBoard = cloneBoard(tempBoard);
-                evalBoard[row][3] = new Tile(hintVal);
-                Tile[][] finalBoard = rotateBoardCopy(evalBoard, 4 - rot);
-                
-                // Lấy giá trị của bàn cờ này
-                float currentV = getV(finalBoard); 
-                
-                // CHANCE NODE: Thay vì cộng dồn, ta lấy cái Tệ nhất (Min)
-                if (currentV < worstCaseV) {
-                    worstCaseV = currentV;
-                }
-            }
-        }
-        
-        // Trả về kịch bản đen tối nhất của hướng đi này
-        return worstCaseV;
+        // 3. Return Q = R + gamma * V
+        return R + (currentGamma * expectedV);
     }
     
-    /**
-     * Get the best move direction using Expectimax (depth=1).
-     * Uses Value N-Tuple to evaluate board state after each move.
-     */
     public Direction getBestMove() {
         Direction bestDir = null;
-        float bestValue = -Float.MAX_VALUE;
+        double bestValue = -Double.MAX_VALUE;
         
         for (Direction dir : Direction.values()) {
-            // Dùng hàm evaluate tương ứng với mode đang chọn
-            float value = (evalMode == EvalMode.SAFE) 
-                ? evaluateSafeMove(dir) 
-                : evaluateMove(dir);
+            double value = evaluateMove(dir);
             if (value > bestValue) {
                 bestValue = value;
                 bestDir = dir;
@@ -451,13 +431,8 @@ public class Game {
         return bestDir;
     }
     
-    // Toggle chế độ đánh giá
-    public void toggleEvalMode() {
-        evalMode = (evalMode == EvalMode.EXPECTIMAX) ? EvalMode.SAFE : EvalMode.EXPECTIMAX;
-    }
-    
     public String getEvalModeName() {
-        return (evalMode == EvalMode.SAFE) ? "🛡️ SAFE" : "📊 AVG";
+        return "📊 EXPECTIMAX (R+γV)";
     }
 
     // GỌI HÀM NÀY KHI BẤM NÚT "TRAIN"
@@ -494,98 +469,55 @@ public class Game {
         }
     }
 
-    public float getMoveConfidence(Direction chosenDir) {
-        float[] qValues = new float[4];
+    public double getMoveConfidence(Direction chosenDir) {
+        double[] qValues = new double[4];
         Direction[] dirs = Direction.values();
-        float maxQ = -Float.MAX_VALUE;
-        float minQ = Float.MAX_VALUE;
+        double maxQ = -Double.MAX_VALUE;
+        double minQ = Double.MAX_VALUE;
 
-        // 1. Tính Q cho 4 hướng (sử dụng cùng mode đang chọn)
+        // 1. Tính Q cho 4 hướng
         for (int i = 0; i < 4; i++) {
-            qValues[i] = (evalMode == EvalMode.SAFE) 
-                ? evaluateSafeMove(dirs[i]) 
-                : evaluateMove(dirs[i]);
-            if (qValues[i] != -Float.MAX_VALUE) {
+            qValues[i] = evaluateMove(dirs[i]);
+            if (qValues[i] != -Double.MAX_VALUE) {
                 if (qValues[i] > maxQ) maxQ = qValues[i];
                 if (qValues[i] < minQ) minQ = qValues[i];
             }
         }
 
         // 2. Tính xem hướng đã chọn chiếm bao nhiêu % trong tổng "độ tốt"
-        float chosenQ = qValues[chosenDir.ordinal()];
-        if (chosenQ == -Float.MAX_VALUE) return 0f;
+        double chosenQ = qValues[chosenDir.ordinal()];
+        if (chosenQ == -Double.MAX_VALUE) return 0.0;
 
-        float sumDiff = 0;
-        for (float q : qValues) {
-            if (q != -Float.MAX_VALUE) sumDiff += (q - minQ + 1);
+        double sumDiff = 0.0;
+        for (double q : qValues) {
+            if (q != -Double.MAX_VALUE) sumDiff += (q - minQ + 1);
         }
 
-        return (sumDiff > 0) ? (chosenQ - minQ + 1) / sumDiff : 0f;
+        return (sumDiff > 0) ? (chosenQ - minQ + 1) / sumDiff : 0.0;
     }
 
     // --- BỔ SUNG LOGIC POTENTIAL (EMPTY & SNAKE) ---
-    // Để khớp hoàn toàn với bản Rust bác đang train
+    // Các hàm này đã được chuyển sang NTupleNetwork
+    // Giữ lại để backward compatibility nếu cần
 
-    public float calculateEmpty(Tile[][] boardState) {
-        int count = 0;
-        for (int r = 0; r < 4; r++) {
-            for (int c = 0; c < 4; c++) {
-                if (boardState[r][c].value == 0) count++;
-            }
-        }
-        return (float) count;
+    public double calculateEmpty(Tile[][] boardState) {
+        return brain != null ? brain.calculateEmpty(boardState) : 0.0;
     }
 
-    public float calculateSnake(Tile[][] boardState) {
-        // Pattern ZigZag chuẩn bác đã chốt
-        float[] SNAKE_WEIGHTS = {
-            1073741824.0f, 268435456.0f, 67108864.0f, 16777216.0f, 
-            65536.0f,      262144.0f,    1048576.0f,  4194304.0f,  
-            16384.0f,      4096.0f,      1024.0f,     256.0f,      
-            1.0f,          4.0f,         16.0f,       64.0f        
-        };
-
-        float maxScore = 0;
-        // Kiểm tra 4 góc (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
-        // 1. Top-Left
-        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 0));
-        // 2. Top-Right (Mirror H)
-        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 1));
-        // 3. Bottom-Left (Mirror V)
-        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 2));
-        // 4. Bottom-Right (Mirror Both)
-        maxScore = Math.max(maxScore, getSnakeScore(boardState, SNAKE_WEIGHTS, 3));
-
-        return maxScore / 1073741824.0f; // CHỐT: Normalize về 1.0 như bản Rust
-    }
-
-    private float getSnakeScore(Tile[][] b, float[] weights, int mode) {
-        float score = 0;
-        for (int r = 0; r < 4; r++) {
-            for (int c = 0; c < 4; c++) {
-                int tr = r, tc = c;
-                if (mode == 1) tc = 3 - c;
-                else if (mode == 2) tr = 3 - r;
-                else if (mode == 3) { tr = 3 - r; tc = 3 - c; }
-                
-                float rank = getRankFromValue(b[tr][tc].value);
-                score += rank * weights[r * 4 + c];
-            }
-        }
-        return score;
+    public double calculateSnake(Tile[][] boardState) {
+        return brain != null ? brain.calculateSnake(boardState) : 0.0;
     }
 
     /**
-     * HÀM TỔNG HỢP V(s): Thay thế cho calculatePotential và getCurrentPotential bị trùng lặp
+     * HÀM TỔNG HỢP V(s): Sử dụng công thức từ Rust
+     * V(s) = Brain Prediction + Composite Potential
+     * Composite Potential = (w_empty * phi_empty) + (w_snake * phi_snake) 
+     *                     + (w_merge * phi_merge) - (w_disorder * phi_disorder)
      */
-    public float getV(Tile[][] boardState) {
-        if (brain == null) return 0;
+    public double getV(Tile[][] boardState) {
+        if (brain == null) return 0.0;
         
-        // V(s) = Neural Network Prediction + (w_empty * Phi_empty) + (w_snake * Phi_snake)
-        float networkPredict = brain.predict(boardState);
-        float phiEmpty = calculateEmpty(boardState);
-        float phiSnake = calculateSnake(boardState);
-        
-        return networkPredict + (brain.wEmpty * phiEmpty) + (brain.wSnake * phiSnake);
+        // Delegate to NTupleNetwork which has the complete formula
+        return brain.getTotalValue(boardState);
     }
 }

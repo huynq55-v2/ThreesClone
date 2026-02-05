@@ -51,7 +51,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean aiModeEnabled = false;
     private Handler aiHandler = new Handler();
     private Button btnAI;
-    private Button btnEvalMode;
     private static final int AI_MOVE_DELAY_MS = 300;
     private static final int AUTO_RESET_DELAY_MS = 3000;
 
@@ -88,10 +87,6 @@ public class MainActivity extends AppCompatActivity {
         btnAI = findViewById(R.id.btnAI);
         btnAI.setOnClickListener(v -> toggleAIMode());
 
-        // --- EVAL MODE TOGGLE (AVG vs SAFE) ---
-        btnEvalMode = findViewById(R.id.btnEvalMode);
-        btnEvalMode.setOnClickListener(v -> toggleEvalMode());
-
         // --- BRAIN MANAGEMENT BUTTONS ---
         setupBrainButtons();
 
@@ -123,20 +118,8 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void toggleEvalMode() {
-        game.toggleEvalMode();
-        updateEvalModeButton();
-        Toast.makeText(this, "Chế độ: " + game.getEvalModeName(), Toast.LENGTH_SHORT).show();
-    }
-
     private void updateEvalModeButton() {
-        String label = game.getEvalModeName();
-        btnEvalMode.setText(label);
-        if (game.evalMode == Game.EvalMode.SAFE) {
-            btnEvalMode.setBackgroundColor(Color.parseColor("#2196F3")); // Blue for SAFE
-        } else {
-            btnEvalMode.setBackgroundColor(Color.LTGRAY); // Gray for AVG
-        }
+        // Mode is fixed to Expectimax
     }
 
     private void scheduleNextAIMove() {
@@ -150,19 +133,19 @@ public class MainActivity extends AppCompatActivity {
         Direction bestDir = game.getBestMove();
         if (bestDir != null) {
             // 1. Capture state BEFORE move
-            float phiOld = game.getV(game.board);
+            double phiOld = game.getV(game.board);
             int scoreBefore = game.score;
             
             boolean moved = game.move(bestDir);
             if (moved) {
                 // 2. Capture state AFTER move
-                float phiNew = game.getV(game.board);
+                double phiNew = game.getV(game.board);
                 int scoreAfter = game.score;
                 
                 // 3. Calculate TOTAL Reward = Base Reward + Shaping Reward
-                float baseReward = (float)(scoreAfter - scoreBefore);
-                float shapingReward = game.calculateMoveReward(phiOld, phiNew);
-                float totalReward = baseReward + shapingReward;
+                double baseReward = (double)(scoreAfter - scoreBefore);
+                double shapingReward = game.calculateMoveReward(phiOld, phiNew);
+                double totalReward = baseReward + shapingReward;
                 
                 showReward(totalReward);
                 updateUI();
@@ -285,7 +268,7 @@ public class MainActivity extends AppCompatActivity {
             // 2. Nếu có hướng vuốt hợp lệ, tiến hành đi và phán xét
             if (chosenDir != null) {
                 // Lưu lại Potential cũ để hiện Reward (nếu bác vẫn muốn giữ text hiển thị)
-                float phiOld = game.getV(game.board);
+                double phiOld = game.getV(game.board);
                 int scoreBefore = game.score;
 
                 boolean moved = game.move(chosenDir);
@@ -308,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void playJudgmentFeedback(Direction dir) {
         // Lấy tỷ lệ % độ tốt của nước đi vừa thực hiện (Hàm này bác đã thêm vào Game.java)
-        float confidence = game.getMoveConfidence(dir);
+        double confidence = game.getMoveConfidence(dir);
         
         // Tìm View nền để chớp màu (Lấy content view mặc định của Activity)
         final View bgView = findViewById(android.R.id.content);
@@ -432,7 +415,7 @@ public class MainActivity extends AppCompatActivity {
         return Color.WHITE;
     }
 
-    private void showReward(float reward) {
+    private void showReward(double reward) {
         // Chỉ hiện nếu reward đáng kể để đỡ rối mắt
         if (Math.abs(reward) < 0.1) {
             tvReward.setVisibility(View.GONE);

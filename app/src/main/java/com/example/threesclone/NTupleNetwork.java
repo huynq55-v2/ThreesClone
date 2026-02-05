@@ -18,9 +18,11 @@ import org.msgpack.core.MessageUnpacker;
  * - Each window has 8 symmetry variants (4 rotations × 2 mirrors)
  * - All 8 variants SHARE the same weight table (weight sharing)
  * - Total: 96 tuples, but only 12 weight tables
+ * 
+ * UPGRADED: All neural network computations use double (f64) precision
  */
 public class NTupleNetwork implements Serializable {
-    private static final long serialVersionUID = 4L;
+    private static final long serialVersionUID = 5L; // Bumped version for f64 upgrade
 
     // Max value code 0-14 (covers up to tile 6144)
     private static final int MAX_VAL_CODE = 15;
@@ -61,15 +63,23 @@ public class NTupleNetwork implements Serializable {
         }
     }
     
-    // Network structure
+    // Network structure - UPGRADED TO DOUBLE (f64)
     public List<TupleConfig> tuples = new ArrayList<>();  // 96 snake variants
-    public List<float[]> weights = new ArrayList<>();     // Only 12 weight tables
-    public float alpha = 0.1f;
-    public float gamma = 0.995f;
+    public List<double[]> weights = new ArrayList<>();    // Only 12 weight tables (f64)
+    public double alpha = 0.1;
+    public double gamma = 0.995;
     
-    // Potential weights (loaded from MessagePack, used for PBRS)
-    public float wEmpty = 0.0f;
-    public float wSnake = 0.0f;
+    // Potential weights (loaded from MessagePack, used for PBRS) - UPGRADED TO DOUBLE
+    public double wEmpty = 0.0;
+    public double wSnake = 0.0;
+    public double wMerge = 0.0;
+    public double wDisorder = 0.0;
+    
+    // Training stats (loaded from Rust, for display/info only)
+    public long totalEpisodes = 0;
+    public double bestTop1Avg = 0.0;
+    public double bestOverallAvg = 0.0;
+    public double bestBot10Avg = 0.0;
 
     public NTupleNetwork() {
         addSharedSnake();
@@ -87,8 +97,8 @@ public class NTupleNetwork implements Serializable {
     private void addSharedSnake() {
         // Sliding window of 5 cells on snake path
         for (int i = 0; i <= SNAKE_PATH.length - TUPLE_SIZE; i++) {
-            // 1. Create weight table (Master)
-            weights.add(new float[TABLE_SIZE]);
+            // 1. Create weight table (Master) - NOW DOUBLE
+            weights.add(new double[TABLE_SIZE]);
             int currentWeightId = weights.size() - 1;
             
             // 2. Extract base indices from snake path
@@ -177,9 +187,9 @@ public class NTupleNetwork implements Serializable {
         return ENCODE_MAP[value];
     }
 
-    // ============== PREDICT (with weight sharing) ==============
+    // ============== PREDICT (with weight sharing) - RETURNS DOUBLE ==============
 
-    public float predict(Tile[][] board) {
+    public double predict(Tile[][] board) {
         ensureBuffer();
         
         // Encode all tiles once
@@ -189,7 +199,7 @@ public class NTupleNetwork implements Serializable {
             }
         }
 
-        float sum = 0;
+        double sum = 0.0;
         for (TupleConfig tuple : tuples) {
             // Calculate index from tuple positions
             int index = 0;
@@ -203,8 +213,8 @@ public class NTupleNetwork implements Serializable {
     }
     
     // Overload for flat board array (used internally)
-    public float predict(int[] board16) {
-        float sum = 0;
+    public double predict(int[] board16) {
+        double sum = 0.0;
         for (TupleConfig tuple : tuples) {
             int index = 0;
             for (int pos : tuple.indices) {
@@ -215,22 +225,23 @@ public class NTupleNetwork implements Serializable {
         return sum;
     }
 
-    // ============== POTENTIAL FUNCTIONS (PBRS) ==============
+    // ============== POTENTIAL FUNCTIONS (PBRS) - ALL DOUBLE ==============
     
-    // Snake weight pattern (S-shaped traversal priorities)
-    private static final float[] SNAKE_WEIGHTS = {
-        // Row 0 (highest priority)
-        65536.0f, 32768.0f, 16384.0f, 8192.0f,
-        // Row 1 (reversed)
-        512.0f, 1024.0f, 2048.0f, 4096.0f,
-        // Row 2
-        256.0f, 128.0f, 64.0f, 32.0f,
-        // Row 3 (lowest)
-        2.0f, 4.0f, 8.0f, 16.0f
+    // Snake weight pattern - matches Rust SNAKE_WEIGHTS exactly
+    // Pattern ZigZag: 4^15 -> 4^0 in S-shape
+    private static final double[] SNAKE_WEIGHTS = {
+        // Row 0: 4^15 -> 4^12 (highest priority)
+        1073741824.0, 268435456.0, 67108864.0, 16777216.0,
+        // Row 1: 4^8 -> 4^11 (reversed)
+        65536.0, 262144.0, 1048576.0, 4194304.0,
+        // Row 2: 4^7 -> 4^4
+        16384.0, 4096.0, 1024.0, 256.0,
+        // Row 3: 4^0 -> 4^3 (lowest)
+        1.0, 4.0, 16.0, 64.0
     };
     
     // Calculate empty cell count
-    public float calculateEmpty(Tile[][] board) {
+    public double calculateEmpty(Tile[][] board) {
         int count = 0;
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
@@ -239,52 +250,52 @@ public class NTupleNetwork implements Serializable {
                 }
             }
         }
-        return (float) count;
+        return (double) count;
     }
     
     // Calculate snake score (best of 4 corners)
-    public float calculateSnake(Tile[][] board) {
-        float maxScore = 0;
+    public double calculateSnake(Tile[][] board) {
+        double maxScore = 0.0;
         
         // 1. Top-Left (Normal)
-        float score = 0;
+        double score = 0.0;
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
                 int idx = r * 4 + c;
-                float rank = getRank(board[r][c].value);
+                double rank = getRank(board[r][c].value);
                 score += rank * SNAKE_WEIGHTS[idx];
             }
         }
         if (score > maxScore) maxScore = score;
         
         // 2. Top-Right (Mirror Horizontal)
-        score = 0;
+        score = 0.0;
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
                 int idx = r * 4 + c;
-                float rank = getRank(board[r][3 - c].value);
+                double rank = getRank(board[r][3 - c].value);
                 score += rank * SNAKE_WEIGHTS[idx];
             }
         }
         if (score > maxScore) maxScore = score;
         
         // 3. Bottom-Left (Mirror Vertical)
-        score = 0;
+        score = 0.0;
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
                 int idx = r * 4 + c;
-                float rank = getRank(board[3 - r][c].value);
+                double rank = getRank(board[3 - r][c].value);
                 score += rank * SNAKE_WEIGHTS[idx];
             }
         }
         if (score > maxScore) maxScore = score;
         
         // 4. Bottom-Right (Mirror Both)
-        score = 0;
+        score = 0.0;
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
                 int idx = r * 4 + c;
-                float rank = getRank(board[3 - r][3 - c].value);
+                double rank = getRank(board[3 - r][3 - c].value);
                 score += rank * SNAKE_WEIGHTS[idx];
             }
         }
@@ -293,34 +304,124 @@ public class NTupleNetwork implements Serializable {
         return maxScore;
     }
     
-    // Get rank of tile value
-    private float getRank(int val) {
-        if (val <= 2) return 0.0f;
-        return (float)(Math.log(val / 3.0) / Math.log(2)) + 1.0f;
+    // Get rank of tile value - RETURNS DOUBLE
+    private double getRank(int val) {
+        if (val <= 2) return 0.0;
+        return (Math.log(val / 3.0) / Math.log(2)) + 1.0;
     }
     
-    // Get composite potential (using loaded weights)
-    public float getCompositePotential(Tile[][] board) {
-        float phiEmpty = calculateEmpty(board);
-        float phiSnake = calculateSnake(board);
-        return (wEmpty * phiEmpty) + (wSnake * phiSnake);
+    // ============== MERGE POTENTIAL ==============
+    
+    /**
+     * Calculate merge potential - how many adjacent tiles can merge
+     * Higher is better (more merge opportunities)
+     */
+    public double calculateMergePotential(Tile[][] board) {
+        double merges = 0.0;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                int val = board[r][c].value;
+                if (val == 0) continue;
+                
+                // Check right neighbor
+                if (c < 3) {
+                    int right = board[r][c + 1].value;
+                    if (canMerge(val, right)) {
+                        merges += 1.0;
+                    }
+                }
+                // Check down neighbor
+                if (r < 3) {
+                    int down = board[r + 1][c].value;
+                    if (canMerge(val, down)) {
+                        merges += 1.0;
+                    }
+                }
+            }
+        }
+        return merges; // Higher is better
+    }
+    
+    /**
+     * Check if two tiles can merge according to Threes rules
+     */
+    private boolean canMerge(int a, int b) {
+        if (a == 0 || b == 0) return false;
+        if ((a == 1 && b == 2) || (a == 2 && b == 1)) return true;
+        if (a > 2 && a == b) return true;
+        return false;
+    }
+    
+    // ============== DISORDER PENALTY ==============
+    
+    /**
+     * Calculate disorder penalty - how chaotic the board is
+     * Higher is worse (big tiles next to small tiles)
+     */
+    public double calculateDisorder(Tile[][] board) {
+        double penalty = 0.0;
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                int val = board[r][c].value;
+                if (val == 0) continue;
+                
+                double rankCurr = getRank(val);
+                
+                // Check right neighbor
+                if (c < 3) {
+                    penalty += getDisorderPenalty(rankCurr, board[r][c + 1].value);
+                }
+                // Check down neighbor
+                if (r < 3) {
+                    penalty += getDisorderPenalty(rankCurr, board[r + 1][c].value);
+                }
+            }
+        }
+        return penalty; // Higher is worse
+    }
+    
+    private double getDisorderPenalty(double rankCurr, int neighborVal) {
+        if (neighborVal == 0) return 0.0;
+        double rankN = getRank(neighborVal);
+        double diff = Math.abs(rankCurr - rankN);
+        // If diff > 1, apply exponential penalty
+        if (diff > 1.0) {
+            return Math.pow(diff, 2.5);
+        }
+        return 0.0;
+    }
+    
+    // ============== COMPOSITE POTENTIAL ==============
+    
+    /**
+     * Get composite potential (using loaded weights)
+     * Formula from Rust:
+     * (w_empty * phi_empty) + (w_snake * phi_snake) + (w_merge * phi_merge) - (w_disorder * phi_disorder)
+     */
+    public double getCompositePotential(Tile[][] board) {
+        double phiEmpty = calculateEmpty(board);
+        double phiSnake = calculateSnake(board) / 1073741824.0; // Normalized like Rust
+        double phiMerge = calculateMergePotential(board) / 10.0; // Normalized
+        double phiDisorder = calculateDisorder(board) / 100.0; // Normalized
+        
+        return (wEmpty * phiEmpty) + (wSnake * phiSnake) + (wMerge * phiMerge) - (wDisorder * phiDisorder);
     }
     
     // Get total value = Brain prediction + Potential
-    public float getTotalValue(Tile[][] board) {
+    public double getTotalValue(Tile[][] board) {
         return predict(board) + getCompositePotential(board);
     }
 
-    // ============== MESSAGEPACK I/O (Rust Compatible) ==============
+    // ============== MESSAGEPACK I/O (Rust Compatible) - UPGRADED TO F64 ==============
 
     /**
      * Load from MessagePack format (Rust rmp_serde compatible)
      * 
      * Format:
      * - Array of TupleConfig (each: {indices: [int], weight_index: int})
-     * - Array of weight tables (each: [float])
-     * - alpha: float
-     * - gamma: float
+     * - Array of weight tables (each: [f64])
+     * - alpha: f64
+     * - gamma: f64
      */
     public void loadFromMessagePack(InputStream is) throws Exception {
         byte[] allBytes = readAllBytes(is);
@@ -350,21 +451,21 @@ public class NTupleNetwork implements Serializable {
             tuples.add(new TupleConfig(indices, weightIndex));
         }
         
-        // 2. Read weights array
+        // 2. Read weights array - NOW F64
         int numWeightTables = unpacker.unpackArrayHeader();
         weights.clear();
         for (int i = 0; i < numWeightTables; i++) {
             int tableSize = unpacker.unpackArrayHeader();
-            float[] table = new float[tableSize];
+            double[] table = new double[tableSize];
             for (int j = 0; j < tableSize; j++) {
-                table[j] = unpacker.unpackFloat();
+                table[j] = unpacker.unpackDouble();
             }
             weights.add(table);
         }
         
-        // 3. Read alpha and gamma
-        alpha = unpacker.unpackFloat();
-        gamma = unpacker.unpackFloat();
+        // 3. Read alpha and gamma - NOW F64
+        alpha = unpacker.unpackDouble();
+        gamma = unpacker.unpackDouble();
         
         unpacker.close();
         ensureBuffer();
@@ -407,9 +508,9 @@ public class NTupleNetwork implements Serializable {
                 int tableSize = buffer.getInt();
                 if (tableSize <= 0 || tableSize > 1000000) throw new Exception("Table size quá lớn");
                 
-                float[] table = new float[tableSize];
+                double[] table = new double[tableSize];
                 for (int j = 0; j < tableSize; j++) {
-                    table[j] = buffer.getFloat();
+                    table[j] = buffer.getDouble(); // NOW DOUBLE
                 }
                 this.weights.add(table);
             }
@@ -458,20 +559,27 @@ public class NTupleNetwork implements Serializable {
                     this.weights.clear();
                     for (int i = 0; i < numTables; i++) {
                         int tableLen = unpacker.unpackArrayHeader();
-                        float[] table = new float[tableLen];
-                        for (int j = 0; j < tableLen; j++) table[j] = unpacker.unpackFloat();
+                        double[] table = new double[tableLen]; // NOW DOUBLE
+                        for (int j = 0; j < tableLen; j++) table[j] = unpacker.unpackDouble();
                         this.weights.add(table);
                     }
                     break;
 
-                case "alpha": this.alpha = unpacker.unpackFloat(); break;
-                case "gamma": this.gamma = unpacker.unpackFloat(); break;
-                case "w_empty": this.wEmpty = unpacker.unpackFloat(); break;
-                case "w_snake": this.wSnake = unpacker.unpackFloat(); break;
+                case "alpha": this.alpha = unpacker.unpackDouble(); break;
+                case "gamma": this.gamma = unpacker.unpackDouble(); break;
+                case "w_empty": this.wEmpty = unpacker.unpackDouble(); break;
+                case "w_snake": this.wSnake = unpacker.unpackDouble(); break;
+                case "w_merge": this.wMerge = unpacker.unpackDouble(); break;
+                case "w_disorder": this.wDisorder = unpacker.unpackDouble(); break;
+                
+                // Training stats from Rust
+                case "total_episodes": this.totalEpisodes = unpacker.unpackLong(); break;
+                case "best_top1_avg": this.bestTop1Avg = unpacker.unpackDouble(); break;
+                case "best_overall_avg": this.bestOverallAvg = unpacker.unpackDouble(); break;
+                case "best_bot10_avg": this.bestBot10Avg = unpacker.unpackDouble(); break;
                 
                 default:
-                    // QUAN TRỌNG: Nếu gặp key lạ (ví dụ w_disorder), phải skip nó 
-                    // để không làm lệch pointer của unpacker
+                    // Skip unknown keys to maintain compatibility
                     unpacker.skipValue();
                     break;
             }
@@ -496,9 +604,9 @@ public class NTupleNetwork implements Serializable {
         
         for (int i = 0; i < numTables; i++) {
             int tableSize = buffer.getInt();
-            float[] table = new float[tableSize];
+            double[] table = new double[tableSize]; // NOW DOUBLE
             for (int j = 0; j < tableSize; j++) {
-                table[j] = buffer.getFloat();
+                table[j] = buffer.getDouble();
             }
             weights.add(table);
         }
@@ -518,17 +626,16 @@ public class NTupleNetwork implements Serializable {
     
     // Debug info
     public String getNetworkInfo() {
-        return String.format("NTupleNetwork: %d tuples, %d weight tables, table_size=%d",
-            tuples.size(), weights.size(), TABLE_SIZE);
+        return String.format("NTupleNetwork: %d tuples, %d tables, Episodes: %d, BestAvg: %.0f",
+            tuples.size(), weights.size(), totalEpisodes, bestOverallAvg);
     }
     
-    // Export to binary (for saving to internal storage)
-    // Thay thế hàm exportToBinary cũ bằng hàm này
+    // Export to binary (for saving to internal storage) - NOW F64
     public void exportToBinary(java.io.OutputStream os) throws Exception {
         org.msgpack.core.MessagePacker packer = org.msgpack.core.MessagePack.newDefaultPacker(os);
         
-        // Lưu dưới dạng Map để tương thích với hàm load cũ
-        packer.packMapHeader(6); // 6 trường: tuples, weights, alpha, gamma, w_empty, w_snake
+        // Lưu dưới dạng Map để tương thích với hàm load
+        packer.packMapHeader(12); // 12 trường: tuples, weights, alpha, gamma, w_*, stats
 
         // 1. Tuples
         packer.packString("tuples");
@@ -542,19 +649,27 @@ public class NTupleNetwork implements Serializable {
             packer.packLong(t.weightIndex);
         }
 
-        // 2. Weights
+        // 2. Weights - NOW DOUBLE
         packer.packString("weights");
         packer.packArrayHeader(weights.size());
-        for (float[] table : weights) {
+        for (double[] table : weights) {
             packer.packArrayHeader(table.length);
-            for (float f : table) packer.packFloat(f);
+            for (double d : table) packer.packDouble(d);
         }
 
-        // 3. Các thông số khác
-        packer.packString("alpha"); packer.packFloat(alpha);
-        packer.packString("gamma"); packer.packFloat(gamma);
-        packer.packString("w_empty"); packer.packFloat(wEmpty);
-        packer.packString("w_snake"); packer.packFloat(wSnake);
+        // 3. Các thông số khác - NOW DOUBLE
+        packer.packString("alpha"); packer.packDouble(alpha);
+        packer.packString("gamma"); packer.packDouble(gamma);
+        packer.packString("w_empty"); packer.packDouble(wEmpty);
+        packer.packString("w_snake"); packer.packDouble(wSnake);
+        packer.packString("w_merge"); packer.packDouble(wMerge);
+        packer.packString("w_disorder"); packer.packDouble(wDisorder);
+        
+        // 4. Training stats
+        packer.packString("total_episodes"); packer.packLong(totalEpisodes);
+        packer.packString("best_top1_avg"); packer.packDouble(bestTop1Avg);
+        packer.packString("best_overall_avg"); packer.packDouble(bestOverallAvg);
+        packer.packString("best_bot10_avg"); packer.packDouble(bestBot10Avg);
 
         packer.close();
     }

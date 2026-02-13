@@ -20,27 +20,25 @@ import androidx.core.view.ViewCompat;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
     private int numBits = 12;
-    private int swapLimit = 3;
+    private int stepsPerSwap = 10; // Cố định sau N bước thì swap
+    private int swapCount = 3; 
     private long maxCapacity, targetValue, currentSum = 0;
-    private int wrongStreak = 0;
+    private int turnCounter = 0; // Đếm số bước đã đi
 
     private ArrayList<Long> realValues = new ArrayList<>();
     private boolean[] buttonStates;
     private AppCompatButton[] buttons;
-    
-    // TRACKING: Lưu những nút đã từng được bật (vấy bẩn)
-    private HashSet<Integer> taintedButtons = new HashSet<>();
 
     private ProgressBar targetProgress, currentProgress;
     private AppCompatTextView infoText, statusText;
     private GridLayout grid;
-    private AppCompatEditText inputBits, inputSwap;
+    private AppCompatEditText inputBits, inputSteps, inputSwapCount;
     private Random random = new Random();
 
     @Override
@@ -50,25 +48,29 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
-        root.setPadding(30, 40, 30, 30);
+        root.setPadding(20, 30, 20, 20);
 
-        // SETTINGS PANEL
+        // --- BẢNG ĐIỀU KHIỂN ---
         LinearLayout settings = new LinearLayout(this);
         settings.setGravity(Gravity.CENTER);
-        inputBits = new AppCompatEditText(this); inputBits.setText("12"); inputBits.setInputType(InputType.TYPE_CLASS_NUMBER); inputBits.setTextColor(Color.WHITE);
-        inputSwap = new AppCompatEditText(this); inputSwap.setText("3"); inputSwap.setInputType(InputType.TYPE_CLASS_NUMBER); inputSwap.setTextColor(Color.WHITE);
-        AppCompatButton btnStart = new AppCompatButton(this); btnStart.setText("CHƠI MỚI");
-        ViewCompat.setBackgroundTintList(btnStart, ColorStateList.valueOf(Color.rgb(0, 100, 0)));
-        btnStart.setTextColor(Color.WHITE); btnStart.setOnClickListener(v -> startNewGame());
+        
+        inputBits = createInput("12");
+        inputSteps = createInput("10"); // Ô nhập số bước cố định
+        inputSwapCount = createInput("3"); 
 
-        settings.addView(new AppCompatTextView(this){{setText("Bits:"); setTextColor(Color.GRAY);}});
-        settings.addView(inputBits);
-        settings.addView(new AppCompatTextView(this){{setText("Lim:"); setTextColor(Color.GRAY);}});
-        settings.addView(inputSwap);
+        AppCompatButton btnStart = new AppCompatButton(this);
+        btnStart.setText("CHƠI");
+        ViewCompat.setBackgroundTintList(btnStart, ColorStateList.valueOf(Color.rgb(0, 100, 0)));
+        btnStart.setTextColor(Color.WHITE);
+        btnStart.setOnClickListener(v -> startNewGame());
+
+        addSettingItem(settings, "B:", inputBits);
+        addSettingItem(settings, "Step:", inputSteps);
+        addSettingItem(settings, "S:", inputSwapCount);
         settings.addView(btnStart);
         root.addView(settings);
 
-        // VISUAL BARS
+        // --- THANH NĂNG LƯỢNG ---
         targetProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         targetProgress.getProgressDrawable().setColorFilter(Color.GREEN, android.graphics.PorterDuff.Mode.SRC_IN);
         root.addView(targetProgress);
@@ -78,7 +80,7 @@ public class MainActivity extends AppCompatActivity {
         root.addView(currentProgress);
 
         infoText = new AppCompatTextView(this); infoText.setTextColor(Color.WHITE); infoText.setGravity(Gravity.CENTER); root.addView(infoText);
-        statusText = new AppCompatTextView(this); statusText.setTextColor(Color.GRAY); statusText.setGravity(Gravity.CENTER); root.addView(statusText);
+        statusText = new AppCompatTextView(this); statusText.setTextColor(Color.CYAN); statusText.setGravity(Gravity.CENTER); root.addView(statusText);
 
         grid = new GridLayout(this); grid.setColumnCount(4);
         root.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -87,12 +89,28 @@ public class MainActivity extends AppCompatActivity {
         startNewGame();
     }
 
+    private AppCompatEditText createInput(String def) {
+        AppCompatEditText et = new AppCompatEditText(this);
+        et.setText(def); et.setInputType(InputType.TYPE_CLASS_NUMBER);
+        et.setTextColor(Color.WHITE); et.setMinWidth(70);
+        return et;
+    }
+
+    private void addSettingItem(LinearLayout parent, String label, AppCompatEditText et) {
+        AppCompatTextView tv = new AppCompatTextView(this);
+        tv.setText(label); tv.setTextColor(Color.GRAY);
+        parent.addView(tv); parent.addView(et);
+    }
+
     private void startNewGame() {
         try {
             numBits = Integer.parseInt(inputBits.getText().toString());
-            swapLimit = Integer.parseInt(inputSwap.getText().toString());
-        } catch (Exception e) { numBits = 12; swapLimit = 3; }
+            stepsPerSwap = Integer.parseInt(inputSteps.getText().toString());
+            swapCount = Integer.parseInt(inputSwapCount.getText().toString());
+        } catch (Exception e) { numBits = 12; stepsPerSwap = 10; swapCount = 3; }
+        
         if (numBits > 31) numBits = 31;
+        if (swapCount > numBits) swapCount = numBits;
 
         maxCapacity = (long) Math.pow(2, numBits) - 1;
         targetValue = Math.abs(random.nextLong()) % maxCapacity; if (targetValue == 0) targetValue = 1;
@@ -103,15 +121,14 @@ public class MainActivity extends AppCompatActivity {
 
         buttonStates = new boolean[numBits];
         buttons = new AppCompatButton[numBits];
-        wrongStreak = 0;
+        turnCounter = 0; // Reset đếm bước
         currentSum = 0;
-        taintedButtons.clear(); 
 
         grid.removeAllViews();
         grid.setColumnCount(numBits > 16 ? 6 : 4);
         for (int i = 0; i < numBits; i++) {
             final int index = i;
-            buttons[i] = new AppCompatButton(this); buttons[i].setText("?");
+            buttons[i] = new AppCompatButton(this);
             updateButtonVisual(index);
             buttons[i].setOnClickListener(v -> onButtonClick(index));
             grid.addView(buttons[i]);
@@ -120,81 +137,60 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void onButtonClick(int index) {
-        long oldDiff = Math.abs(targetValue - currentSum);
-        boolean isTurningOn = !buttonStates[index];
-        buttonStates[index] = isTurningOn;
+        // Hành động
+        buttonStates[index] = !buttonStates[index];
+        turnCounter++; // Tăng số bước sau mỗi lần bấm
 
         currentSum = 0;
         for (int i = 0; i < numBits; i++) if (buttonStates[i]) currentSum += realValues.get(i);
-        long newDiff = Math.abs(targetValue - currentSum);
-
-        if (isTurningOn) {
-            if (taintedButtons.contains(index)) {
-                // Nút cũ bật lại -> Không reset nợ
-                if (newDiff >= oldDiff) wrongStreak++;
-                statusText.setText("Nút đã dùng! Phạt: " + wrongStreak);
-                statusText.setTextColor(Color.rgb(200, 0, 200)); // Tím
-            } else {
-                // Nút mới hoàn toàn
-                taintedButtons.add(index); 
-                if (newDiff < oldDiff) {
-                    wrongStreak = 0;
-                    statusText.setText("Duyên mới - Đúng hướng! Xóa nợ.");
-                    statusText.setTextColor(Color.GREEN);
-                } else {
-                    wrongStreak++;
-                    statusText.setText("Duyên mới - Sai hướng! Phạt: " + wrongStreak);
-                    statusText.setTextColor(Color.RED);
-                }
-            }
-        } else {
-            statusText.setText("Buông bỏ. Nợ vẫn còn: " + wrongStreak);
-            statusText.setTextColor(Color.rgb(255, 165, 0)); // Cam
-        }
 
         updateButtonVisual(index);
         updateUI();
         
-        if (currentSum == targetValue) showWin();
-        else if (wrongStreak >= swapLimit) triggerSwap();
-    }
-
-    private void updateButtonVisual(int index) {
-        if (buttonStates[index]) {
-            // Đang bật
-            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.YELLOW));
-            buttons[index].setTextColor(Color.BLACK);
-            buttons[index].setText("ON");
-        } else if (taintedButtons.contains(index)) {
-            // Đã dùng và đang tắt -> Xám xịt
-            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.rgb(15, 15, 15)));
-            buttons[index].setTextColor(Color.rgb(60, 60, 60));
-            buttons[index].setText("X");
+        if (currentSum == targetValue) {
+            showWin();
+        } else if (turnCounter >= stepsPerSwap) {
+            triggerMultiSwap();
         } else {
-            // Chưa dùng
-            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.rgb(40, 40, 40)));
-            buttons[index].setTextColor(Color.GRAY);
-            buttons[index].setText("?");
+            statusText.setText("Bước: " + turnCounter + " / " + stepsPerSwap);
+            statusText.setTextColor(Color.WHITE);
         }
     }
 
-    private void triggerSwap() {
-        Toast.makeText(this, "⚠ SWAP - TẨY TRẮNG NGHIỆP QUẢ!", Toast.LENGTH_SHORT).show();
-        int i = random.nextInt(numBits), j = random.nextInt(numBits);
-        while (i == j) j = random.nextInt(numBits);
-        Collections.swap(realValues, i, j);
+    private void triggerMultiSwap() {
+        Toast.makeText(this, "⚠ ĐẾN GIỜ VÔ THƯỜNG - SWAP!", Toast.LENGTH_SHORT).show();
         
-        wrongStreak = 0;
-        taintedButtons.clear(); // Reset toàn bộ vấy bẩn
+        List<Integer> indices = new ArrayList<>();
+        for (int i = 0; i < numBits; i++) indices.add(i);
+        Collections.shuffle(indices);
+        List<Integer> swapIndices = indices.subList(0, swapCount);
+
+        long firstValue = realValues.get(swapIndices.get(0));
+        for (int i = 0; i < swapCount - 1; i++) {
+            realValues.set(swapIndices.get(i), realValues.get(swapIndices.get(i + 1)));
+        }
+        realValues.set(swapIndices.get(swapCount - 1), firstValue);
+
+        turnCounter = 0; // Reset đếm bước sau khi swap
         
         currentSum = 0;
         for (int k = 0; k < numBits; k++) {
             if (buttonStates[k]) currentSum += realValues.get(k);
-            updateButtonVisual(k); // Cập nhật lại màu sắc cho tất cả các nút
+            updateButtonVisual(k);
         }
         updateUI();
-        statusText.setText("VŨ TRỤ ĐẢO LỘN - LÀM LẠI TỪ ĐẦU!");
-        statusText.setTextColor(Color.CYAN);
+        statusText.setText("CẤU TRÚC ĐÃ ĐẢO LỘN!");
+        statusText.setTextColor(Color.MAGENTA);
+    }
+
+    private void updateButtonVisual(int index) {
+        if (buttonStates[index]) {
+            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.YELLOW));
+            buttons[index].setTextColor(Color.BLACK); buttons[index].setText("ON");
+        } else {
+            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.rgb(50, 50, 50)));
+            buttons[index].setTextColor(Color.GRAY); buttons[index].setText("?");
+        }
     }
 
     private void updateUI() {
@@ -205,7 +201,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showWin() {
-        new AlertDialog.Builder(this).setTitle("GIÁC NGỘ").setMessage("Bạn đã tìm thấy sự cân bằng!")
+        new AlertDialog.Builder(this).setTitle("GIÁC NGỘ").setMessage("Cân bằng hoàn hảo sau " + turnCounter + " bước!")
             .setPositiveButton("Lại", (d, w) -> startNewGame()).setCancelable(false).show();
     }
 }

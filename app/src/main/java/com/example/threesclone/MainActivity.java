@@ -1,21 +1,23 @@
-package com.example.threesclone; // Đã đổi theo package trong log của anh
+package com.example.threesclone;
 
-import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
-import androidx.appcompat.app.AppCompatActivity; // Dùng AppCompatActivity cho chuẩn
-import androidx.appcompat.widget.AppCompatButton;
-import androidx.appcompat.widget.AppCompatEditText;
-import androidx.appcompat.widget.AppCompatTextView;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.AppCompatButton;
+import androidx.appcompat.widget.AppCompatEditText;
+import androidx.appcompat.widget.AppCompatTextView;
+import androidx.core.view.ViewCompat;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,7 +51,7 @@ public class MainActivity extends AppCompatActivity {
         root.setBackgroundColor(Color.BLACK);
         root.setPadding(30, 40, 30, 30);
 
-        // --- CÀI ĐẶT (Settings Panel) ---
+        // --- SETTINGS PANEL ---
         LinearLayout settings = new LinearLayout(this);
         settings.setOrientation(LinearLayout.HORIZONTAL);
         settings.setGravity(Gravity.CENTER);
@@ -68,11 +70,11 @@ public class MainActivity extends AppCompatActivity {
 
         AppCompatButton btnStart = new AppCompatButton(this);
         btnStart.setText("CHƠI MỚI");
-        btnStart.setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(0, 100, 0)));
+        // FIX: Sử dụng ViewCompat để tránh lỗi RestrictedApi
+        ViewCompat.setBackgroundTintList(btnStart, ColorStateList.valueOf(Color.rgb(0, 100, 0)));
         btnStart.setTextColor(Color.WHITE);
         btnStart.setOnClickListener(v -> startNewGame());
 
-        // Fix lỗi lint bằng cách dùng AppCompatTextView
         AppCompatTextView tvBits = new AppCompatTextView(this);
         tvBits.setText("Bits:"); tvBits.setTextColor(Color.GRAY);
         settings.addView(tvBits);
@@ -85,7 +87,7 @@ public class MainActivity extends AppCompatActivity {
         settings.addView(btnStart);
         root.addView(settings);
 
-        // --- THANH HIỂN THỊ ---
+        // --- VISUAL BARS ---
         targetProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         targetProgress.getProgressDrawable().setColorFilter(Color.GREEN, android.graphics.PorterDuff.Mode.SRC_IN);
         
@@ -114,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
         statusText.setTextSize(12);
         root.addView(statusText);
 
-        // --- GRID NÚT BẤM ---
         grid = new GridLayout(this);
         grid.setColumnCount(4);
         grid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
@@ -133,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             numBits = 12; swapLimit = 3;
         }
-        if (numBits > 31) numBits = 31; // Giới hạn bit để tránh tràn số
+        if (numBits > 31) numBits = 31;
 
         maxCapacity = (long) Math.pow(2, numBits) - 1;
         targetValue = Math.abs(random.nextLong()) % maxCapacity;
@@ -156,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
             buttons[i] = new AppCompatButton(this);
             buttons[i].setText("?");
             buttons[i].setTextSize(10);
-            buttons[i].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(40, 40, 40)));
+            ViewCompat.setBackgroundTintList(buttons[i], ColorStateList.valueOf(Color.rgb(40, 40, 40)));
             buttons[i].setTextColor(Color.GRAY);
             buttons[i].setOnClickListener(v -> onButtonClick(index));
             grid.addView(buttons[i]);
@@ -180,11 +181,11 @@ public class MainActivity extends AppCompatActivity {
         long newDiff = Math.abs(targetValue - currentSum);
 
         if (buttonStates[index]) {
-            buttons[index].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.YELLOW));
+            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.YELLOW));
             buttons[index].setTextColor(Color.BLACK);
             buttons[index].setText("ON");
         } else {
-            buttons[index].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(40, 40, 40)));
+            ViewCompat.setBackgroundTintList(buttons[index], ColorStateList.valueOf(Color.rgb(40, 40, 40)));
             buttons[index].setTextColor(Color.GRAY);
             buttons[index].setText("?");
         }

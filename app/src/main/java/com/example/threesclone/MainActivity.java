@@ -9,6 +9,7 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.AppCompatButton;
 import androidx.appcompat.widget.AppCompatTextView;
@@ -19,7 +20,7 @@ import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
-    private int numBits = 10; // Giảm xuống 10 cho đúng ví dụ của anh
+    private int numBits = 10; 
     private int maxTurns = 30;
     private long targetValue, currentSum = 0;
     private int currentTurn = 0;
@@ -30,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private GridLayout grid;
     private boolean isAutoRunning = false;
     private Handler handler = new Handler();
+    private Random rnd = new Random();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
         root.addView(statusText);
 
         AppCompatButton btnAuto = new AppCompatButton(this);
-        btnAuto.setText("🧮 PURE MATH AI");
+        btnAuto.setText("🤖 PURE PROBABILITY AI");
         btnAuto.setOnClickListener(v -> toggleAuto());
         root.addView(btnAuto);
 
@@ -64,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startNewGame() {
-        targetValue = Math.abs(new Random().nextLong() % ((long) Math.pow(2, numBits) - 1));
+        targetValue = Math.abs(rnd.nextLong() % ((long) Math.pow(2, numBits) - 1));
         realValues.clear();
         for (int i = 0; i < numBits; i++) realValues.add((long) Math.pow(2, i));
         Collections.shuffle(realValues);
@@ -101,7 +103,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUI() {
         karmaText.setText("KARMA: " + calculateKarma());
-        statusText.setText("Sinh mệnh: " + currentTurn + "/" + maxTurns);
+        statusText.setText("Turns: " + currentTurn + "/" + maxTurns);
     }
 
     private void updateButtonVisual(int i) {
@@ -120,63 +122,53 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void run() {
             if (!isAutoRunning) return;
-            int bestMove = findBestExpectimaxMove();
-            if (bestMove != -1) performMove(bestMove);
+            int move = getPureProbabilityMove();
+            if (move != -1) performMove(move);
             handler.postDelayed(this, 500);
         }
     };
 
-    private int findBestExpectimaxMove() {
+    private int getPureProbabilityMove() {
         int k = calculateKarma();
-        double minEV = Double.MAX_VALUE;
-        int bestIdx = -1;
-
         int onCount = 0;
-        for (boolean s : buttonStates) if (s) onCount++;
-        int offCount = numBits - onCount;
+        List<Integer> onIndices = new ArrayList<>();
+        List<Integer> offIndices = new ArrayList<>();
 
         for (int i = 0; i < numBits; i++) {
-            boolean switchingOn = !buttonStates[i];
-            
-            // TÍNH XÁC SUẤT KHÔNG GIẢ ĐỊNH
-            double pCorrectTotal = 0;
-            int scenarios = 0;
-
-            // Duyệt mọi kịch bản (k_on + k_off = k)
-            for (int k_on = 0; k_on <= onCount; k_on++) {
-                int k_off = k - k_on;
-                if (k_off >= 0 && k_off <= offCount) {
-                    double p;
-                    if (switchingOn) p = (double) k_off / offCount;
-                    else p = (double) k_on / onCount;
-                    
-                    pCorrectTotal += p;
-                    scenarios++;
-                }
-            }
-            
-            double pCorrect = (scenarios > 0) ? pCorrectTotal / scenarios : 0;
-            double ev = simulate(k, switchingOn, onCount, offCount, pCorrect, 3);
-
-            if (ev < minEV) {
-                minEV = ev;
-                bestIdx = i;
+            if (buttonStates[i]) {
+                onCount++;
+                onIndices.add(i);
+            } else {
+                offIndices.add(i);
             }
         }
-        return bestIdx;
-    }
+        int offCount = numBits - onCount;
 
-    private double simulate(int k, boolean lastOn, int on, int off, double p, int depth) {
-        if (k == 0) return 0;
-        if (depth == 0) return k;
+        // 1. TÍNH XÁC SUẤT TRUNG BÌNH CHO 2 HƯỚNG: BẬT VÀ TẮT
+        double pCorrectOn = 0;  // Xác suất đúng khi TẮT một nút đang ON
+        double pCorrectOff = 0; // Xác suất đúng khi BẬT một nút đang OFF
+        int scenarios = 0;
 
-        int nextOn = lastOn ? on + 1 : on - 1;
-        int nextOff = numBits - nextOn;
+        for (int k_on = 0; k_on <= onCount; k_on++) {
+            int k_off = k - k_on;
+            if (k_off >= 0 && k_off <= offCount) {
+                if (onCount > 0) pCorrectOn += (double) k_on / onCount;
+                if (offCount > 0) pCorrectOff += (double) k_off / offCount;
+                scenarios++;
+            }
+        }
 
-        // Chance Node với p được tính trung bình từ các kịch bản
-        double evCorrect = simulate(k - 1, !lastOn, nextOn, nextOff, (double)(k-1.0)/numBits, depth - 1);
-        double evWrong = simulate(k + 1, !lastOn, nextOn, nextOff, (double)(k+1.0)/numBits, depth - 1);
+        if (scenarios == 0) return -1;
+        pCorrectOn /= scenarios;
+        pCorrectOff /= scenarios;
 
-        return (p * evCorrect) + ((1 - p) * evWrong);
+        // 2. QUYẾT ĐỊNH HƯỚNG VÀ RANDOM TRONG NHÓM ĐÓ
+        if (pCorrectOn > pCorrectOff && !onIndices.isEmpty()) {
+            return onIndices.get(rnd.nextInt(onIndices.size())); // Random trong đống đang ON
+        } else if (!offIndices.isEmpty()) {
+            return offIndices.get(rnd.nextInt(offIndices.size())); // Random trong đống đang OFF
+        }
+        
+        return -1;
     }
 }

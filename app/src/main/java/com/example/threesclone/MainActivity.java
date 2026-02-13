@@ -26,10 +26,11 @@ import java.util.Random;
 public class MainActivity extends AppCompatActivity {
 
     private int numBits = 12;
-    private int stepsPerSwap = 10; // Cố định sau N bước thì swap
-    private int swapCount = 3; 
+    private int maxTurns = 10; // Số lượt BẬT tối đa trước khi Swap
+    private int swapCount = 3; // Số bit bị tráo mỗi lần Swap
+    
     private long maxCapacity, targetValue, currentSum = 0;
-    private int turnCounter = 0; // Đếm số bước đã đi
+    private int currentTurn = 0; // Đếm số lần đã BẬT
 
     private ArrayList<Long> realValues = new ArrayList<>();
     private boolean[] buttonStates;
@@ -38,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar targetProgress, currentProgress;
     private AppCompatTextView infoText, statusText;
     private GridLayout grid;
-    private AppCompatEditText inputBits, inputSteps, inputSwapCount;
+    private AppCompatEditText inputBits, inputMaxTurns, inputSwapCount;
     private Random random = new Random();
 
     @Override
@@ -50,13 +51,13 @@ public class MainActivity extends AppCompatActivity {
         root.setBackgroundColor(Color.BLACK);
         root.setPadding(20, 30, 20, 20);
 
-        // --- BẢNG ĐIỀU KHIỂN ---
+        // --- SETTINGS ---
         LinearLayout settings = new LinearLayout(this);
         settings.setGravity(Gravity.CENTER);
         
         inputBits = createInput("12");
-        inputSteps = createInput("10"); // Ô nhập số bước cố định
-        inputSwapCount = createInput("3"); 
+        inputMaxTurns = createInput("8"); // Mặc định 8 lượt bật là Swap
+        inputSwapCount = createInput("3");
 
         AppCompatButton btnStart = new AppCompatButton(this);
         btnStart.setText("CHƠI");
@@ -64,13 +65,13 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setTextColor(Color.WHITE);
         btnStart.setOnClickListener(v -> startNewGame());
 
-        addSettingItem(settings, "B:", inputBits);
-        addSettingItem(settings, "Step:", inputSteps);
-        addSettingItem(settings, "S:", inputSwapCount);
+        addSettingItem(settings, "Bit:", inputBits);
+        addSettingItem(settings, "Turn:", inputMaxTurns);
+        addSettingItem(settings, "Swap:", inputSwapCount);
         settings.addView(btnStart);
         root.addView(settings);
 
-        // --- THANH NĂNG LƯỢNG ---
+        // --- BARS ---
         targetProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         targetProgress.getProgressDrawable().setColorFilter(Color.GREEN, android.graphics.PorterDuff.Mode.SRC_IN);
         root.addView(targetProgress);
@@ -105,9 +106,9 @@ public class MainActivity extends AppCompatActivity {
     private void startNewGame() {
         try {
             numBits = Integer.parseInt(inputBits.getText().toString());
-            stepsPerSwap = Integer.parseInt(inputSteps.getText().toString());
+            maxTurns = Integer.parseInt(inputMaxTurns.getText().toString());
             swapCount = Integer.parseInt(inputSwapCount.getText().toString());
-        } catch (Exception e) { numBits = 12; stepsPerSwap = 10; swapCount = 3; }
+        } catch (Exception e) { numBits = 12; maxTurns = 8; swapCount = 3; }
         
         if (numBits > 31) numBits = 31;
         if (swapCount > numBits) swapCount = numBits;
@@ -121,7 +122,7 @@ public class MainActivity extends AppCompatActivity {
 
         buttonStates = new boolean[numBits];
         buttons = new AppCompatButton[numBits];
-        turnCounter = 0; // Reset đếm bước
+        currentTurn = 0;
         currentSum = 0;
 
         grid.removeAllViews();
@@ -134,32 +135,45 @@ public class MainActivity extends AppCompatActivity {
             grid.addView(buttons[i]);
         }
         updateUI();
+        statusText.setText("Sẵn sàng. Chỉ tính lượt khi BẬT.");
     }
 
     private void onButtonClick(int index) {
-        // Hành động
-        buttonStates[index] = !buttonStates[index];
-        turnCounter++; // Tăng số bước sau mỗi lần bấm
+        // Kiểm tra hành động: Bật hay Tắt?
+        boolean isTurningOn = !buttonStates[index];
+        buttonStates[index] = isTurningOn; // Cập nhật trạng thái
 
+        // Tính toán Logic Turn
+        if (isTurningOn) {
+            currentTurn++; // CHỈ TĂNG LƯỢT KHI BẬT
+        }
+        // Nếu Tắt (isTurningOn == false) -> Không tăng turn, coi như sửa sai miễn phí.
+
+        // Tính lại tổng
         currentSum = 0;
         for (int i = 0; i < numBits; i++) if (buttonStates[i]) currentSum += realValues.get(i);
 
         updateButtonVisual(index);
-        updateUI();
         
+        // Kiểm tra Win trước
         if (currentSum == targetValue) {
+            updateUI();
             showWin();
-        } else if (turnCounter >= stepsPerSwap) {
+            return;
+        }
+
+        // Kiểm tra Swap (Chỉ xảy ra nếu vừa Bật làm tràn lượt)
+        if (currentTurn >= maxTurns) {
             triggerMultiSwap();
         } else {
-            statusText.setText("Bước: " + turnCounter + " / " + stepsPerSwap);
-            statusText.setTextColor(Color.WHITE);
+            updateUI();
         }
     }
 
     private void triggerMultiSwap() {
-        Toast.makeText(this, "⚠ ĐẾN GIỜ VÔ THƯỜNG - SWAP!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "⚠ HẾT LƯỢT - SWAP " + swapCount + " BIT!", Toast.LENGTH_SHORT).show();
         
+        // Logic Swap: Xoay vòng giá trị của N bit ngẫu nhiên
         List<Integer> indices = new ArrayList<>();
         for (int i = 0; i < numBits; i++) indices.add(i);
         Collections.shuffle(indices);
@@ -171,13 +185,16 @@ public class MainActivity extends AppCompatActivity {
         }
         realValues.set(swapIndices.get(swapCount - 1), firstValue);
 
-        turnCounter = 0; // Reset đếm bước sau khi swap
+        currentTurn = 0; // Reset lượt về 0
         
+        // Tính lại tổng sau khi giá trị bị đổi
         currentSum = 0;
         for (int k = 0; k < numBits; k++) {
             if (buttonStates[k]) currentSum += realValues.get(k);
-            updateButtonVisual(k);
         }
+        
+        // Cập nhật giao diện
+        for (int k = 0; k < numBits; k++) updateButtonVisual(k);
         updateUI();
         statusText.setText("CẤU TRÚC ĐÃ ĐẢO LỘN!");
         statusText.setTextColor(Color.MAGENTA);
@@ -197,11 +214,21 @@ public class MainActivity extends AppCompatActivity {
         targetProgress.setMax(1000); currentProgress.setMax(1000);
         targetProgress.setProgress((int) ((targetValue * 1000) / maxCapacity));
         currentProgress.setProgress((int) ((currentSum * 1000) / maxCapacity));
-        infoText.setText("T: " + targetValue + " | C: " + currentSum);
+        
+        infoText.setText("Target: " + targetValue + " | Current: " + currentSum);
+        
+        // Hiển thị số lượt
+        String turnInfo = "Lượt: " + currentTurn + " / " + maxTurns;
+        if (!statusText.getText().toString().equals("CẤU TRÚC ĐÃ ĐẢO LỘN!")) {
+            statusText.setText(turnInfo);
+            // Đổi màu cảnh báo nếu sắp hết lượt
+            if (currentTurn >= maxTurns - 2) statusText.setTextColor(Color.RED);
+            else statusText.setTextColor(Color.CYAN);
+        }
     }
 
     private void showWin() {
-        new AlertDialog.Builder(this).setTitle("GIÁC NGỘ").setMessage("Cân bằng hoàn hảo sau " + turnCounter + " bước!")
+        new AlertDialog.Builder(this).setTitle("GIÁC NGỘ").setMessage("Cân bằng hoàn hảo!")
             .setPositiveButton("Lại", (d, w) -> startNewGame()).setCancelable(false).show();
     }
 }

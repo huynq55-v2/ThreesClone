@@ -1,4 +1,4 @@
-package com.huy.zenlogic;
+package com.example.threesclone; // Đã đổi theo package trong log của anh
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -8,22 +8,23 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
+import androidx.appcompat.app.AppCompatActivity; // Dùng AppCompatActivity cho chuẩn
+import androidx.appcompat.widget.AppCompatButton;
+import androidx.appcompat.widget.AppCompatEditText;
+import androidx.appcompat.widget.AppCompatTextView;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Random;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
 
     private int numBits = 12;
-    private int swapLimit = 3; // Mặc định là 3 cho dễ thở hơn
+    private int swapLimit = 3;
     private long maxCapacity;
     private long targetValue;
     private long currentSum = 0;
@@ -31,12 +32,12 @@ public class MainActivity extends Activity {
 
     private ArrayList<Long> realValues = new ArrayList<>();
     private boolean[] buttonStates;
-    private Button[] buttons;
+    private AppCompatButton[] buttons;
 
     private ProgressBar targetProgress, currentProgress;
-    private TextView infoText, statusText;
+    private AppCompatTextView infoText, statusText;
     private GridLayout grid;
-    private EditText inputBits, inputSwap;
+    private AppCompatEditText inputBits, inputSwap;
     private Random random = new Random();
 
     @Override
@@ -53,27 +54,33 @@ public class MainActivity extends Activity {
         settings.setOrientation(LinearLayout.HORIZONTAL);
         settings.setGravity(Gravity.CENTER);
         
-        inputBits = new EditText(this);
+        inputBits = new AppCompatEditText(this);
         inputBits.setHint("Bits");
         inputBits.setText("12");
         inputBits.setInputType(InputType.TYPE_CLASS_NUMBER);
         inputBits.setTextColor(Color.WHITE);
         
-        inputSwap = new EditText(this);
+        inputSwap = new AppCompatEditText(this);
         inputSwap.setHint("Limit");
         inputSwap.setText("3");
         inputSwap.setInputType(InputType.TYPE_CLASS_NUMBER);
         inputSwap.setTextColor(Color.WHITE);
 
-        Button btnStart = new Button(this);
+        AppCompatButton btnStart = new AppCompatButton(this);
         btnStart.setText("CHƠI MỚI");
-        btnStart.setBackgroundColor(Color.rgb(0, 100, 0));
+        btnStart.setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(0, 100, 0)));
         btnStart.setTextColor(Color.WHITE);
         btnStart.setOnClickListener(v -> startNewGame());
 
-        settings.addView(new TextView(this){{setText("Bits:"); setTextColor(Color.GRAY);}});
+        // Fix lỗi lint bằng cách dùng AppCompatTextView
+        AppCompatTextView tvBits = new AppCompatTextView(this);
+        tvBits.setText("Bits:"); tvBits.setTextColor(Color.GRAY);
+        settings.addView(tvBits);
         settings.addView(inputBits);
-        settings.addView(new TextView(this){{setText("Limit:"); setTextColor(Color.GRAY);}});
+
+        AppCompatTextView tvLimit = new AppCompatTextView(this);
+        tvLimit.setText("Limit:"); tvLimit.setTextColor(Color.GRAY);
+        settings.addView(tvLimit);
         settings.addView(inputSwap);
         settings.addView(btnStart);
         root.addView(settings);
@@ -81,21 +88,27 @@ public class MainActivity extends Activity {
         // --- THANH HIỂN THỊ ---
         targetProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         targetProgress.getProgressDrawable().setColorFilter(Color.GREEN, android.graphics.PorterDuff.Mode.SRC_IN);
-        root.addView(new TextView(this){{setText("TARGET"); setTextColor(Color.GREEN); setTextSize(10);}});
+        
+        AppCompatTextView tvT = new AppCompatTextView(this);
+        tvT.setText("TARGET"); tvT.setTextColor(Color.GREEN); tvT.setTextSize(10);
+        root.addView(tvT);
         root.addView(targetProgress);
 
         currentProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         currentProgress.getProgressDrawable().setColorFilter(Color.YELLOW, android.graphics.PorterDuff.Mode.SRC_IN);
-        root.addView(new TextView(this){{setText("CURRENT"); setTextColor(Color.YELLOW); setTextSize(10); setPadding(0,10,0,0);}});
+        
+        AppCompatTextView tvC = new AppCompatTextView(this);
+        tvC.setText("CURRENT"); tvC.setTextColor(Color.YELLOW); tvC.setTextSize(10); tvC.setPadding(0,10,0,0);
+        root.addView(tvC);
         root.addView(currentProgress);
 
-        infoText = new TextView(this);
+        infoText = new AppCompatTextView(this);
         infoText.setTextColor(Color.WHITE);
         infoText.setGravity(Gravity.CENTER);
         infoText.setPadding(0, 20, 0, 5);
         root.addView(infoText);
 
-        statusText = new TextView(this);
+        statusText = new AppCompatTextView(this);
         statusText.setTextColor(Color.GRAY);
         statusText.setGravity(Gravity.CENTER);
         statusText.setTextSize(12);
@@ -120,7 +133,7 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             numBits = 12; swapLimit = 3;
         }
-        if (numBits > 32) numBits = 32; // Giới hạn bit để tránh tràn số Long
+        if (numBits > 31) numBits = 31; // Giới hạn bit để tránh tràn số
 
         maxCapacity = (long) Math.pow(2, numBits) - 1;
         targetValue = Math.abs(random.nextLong()) % maxCapacity;
@@ -131,7 +144,7 @@ public class MainActivity extends Activity {
         Collections.shuffle(realValues);
 
         buttonStates = new boolean[numBits];
-        buttons = new Button[numBits];
+        buttons = new AppCompatButton[numBits];
         wrongStreak = 0;
         currentSum = 0;
 
@@ -140,10 +153,10 @@ public class MainActivity extends Activity {
 
         for (int i = 0; i < numBits; i++) {
             final int index = i;
-            buttons[i] = new Button(this);
+            buttons[i] = new AppCompatButton(this);
             buttons[i].setText("?");
             buttons[i].setTextSize(10);
-            buttons[i].setBackgroundColor(Color.rgb(40, 40, 40));
+            buttons[i].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(40, 40, 40)));
             buttons[i].setTextColor(Color.GRAY);
             buttons[i].setOnClickListener(v -> onButtonClick(index));
             grid.addView(buttons[i]);
@@ -167,11 +180,11 @@ public class MainActivity extends Activity {
         long newDiff = Math.abs(targetValue - currentSum);
 
         if (buttonStates[index]) {
-            buttons[index].setBackgroundColor(Color.YELLOW);
+            buttons[index].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.YELLOW));
             buttons[index].setTextColor(Color.BLACK);
             buttons[index].setText("ON");
         } else {
-            buttons[index].setBackgroundColor(Color.rgb(40, 40, 40));
+            buttons[index].setSupportBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(40, 40, 40)));
             buttons[index].setTextColor(Color.GRAY);
             buttons[index].setText("?");
         }
